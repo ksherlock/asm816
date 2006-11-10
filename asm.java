@@ -66,7 +66,7 @@ public class asm
             //    return;
             //}
             Lexer_Orca lex = new Lexer_Orca(System.in);
-            Parser p = new Parser();
+            Orca_Parser p = new Orca_Parser();
             p.Parse(lex);
         }
         else

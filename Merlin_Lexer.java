@@ -1,19 +1,18 @@
-
-/*
- * Created on Feb 24, 2006
- * Feb 24, 2006 2:44:16 AM
- */
-
 import java.io.InputStream;
 
-public class Lexer_Orca extends Lexer
-{
+/*
+ * Created on Nov 8, 2006
+ * Nov 8, 2006 5:10:02 PM
+ */
 
-    public Lexer_Orca(InputStream io)
+public class Merlin_Lexer extends Lexer
+{
+    public Merlin_Lexer(InputStream io)
     {
         super(io);
     }
-       
+
+    @Override
     protected Token __NextToken()
     {
         int c = NextChar();
@@ -79,29 +78,10 @@ public class Lexer_Orca extends Lexer
                 // TODO -- throw error if i == 0
                 return new Token(Token.NUMBER, value);
             }
-            /*
-             * octal number.
-             */
-        case '@':
-            {
-                int value = 0;
-                int i = 0;
-                c = NextChar();
-                
-                while(ctype.isoctal(c))
-                {
-                    i++;
-                    value <<=  3;
-                    value += (c - '0');
-                    c = NextChar();
-                }
-                Poke(c);
-                // TODO -- throw error if i == 0
-                return new Token(Token.NUMBER, value);
-            }
+
             
             /*
-             * binary number
+             * binary number '_' is allowed and ignored.
              */
         case '%':
             {
@@ -109,8 +89,9 @@ public class Lexer_Orca extends Lexer
                 int i = 0;
                 c = NextChar();
                 
-                while(c == '1' || c == '0')
+                while(c == '1' || c == '0' || c == '_')
                 {
+                    if (c == '_') continue;
                     i++;
                     value <<=  1;
                     value += (c - '0');
@@ -144,12 +125,28 @@ public class Lexer_Orca extends Lexer
                     value += (c - '0');
                     c = NextChar();
                 }
-                // TODO -- if c == '.' or 'e' then this should be a REAL number??
                 Poke(c);
                 
                 return new Token(Token.NUMBER, value);
             }
 
+            
+            /*
+             * symbolic macro parameter
+             */
+        case ']':
+            if (this.fMacro)
+            {
+                c = NextChar();
+                if (ctype.isdigit(c))
+                {
+                    return new Token(Token.MACRO_PARM, "]" + (char)c);
+                }
+
+                Poke(c);
+            }
+            return new Token(c);
+            
             /*
              * character constant -- return as string.
              */
@@ -170,61 +167,13 @@ public class Lexer_Orca extends Lexer
                     // may be the end or it may be an escaped quote.
                     if (c == quote)
                     {
-                        if (Peek() == quote)
-                        {
-                            NextChar();
-                        }
-                        else
-                        {
-                            return new Token(Token.STRING, buff.toString());
-                        }
+                        return new Token(Token.STRING, buff.toString());
                     }
+                    if (quote == '"') c |= 0x80; // set the hi-bit
                     buff.append((char)c);                   
                 }               
-            }
-            // never reached.
+            }            
             
-            /*
-             * symbolic macro parameter
-             */
-        case '&':
-            if (this.fMacro)
-            {
-                StringBuffer buff = new StringBuffer();
-                while (ctype.isalpha(c = NextChar()))
-                {
-                    buff.append((char)c);
-                }
-                Poke(c);
-                if (buff.length() > 0) 
-                    return new Token(Token.MACRO_PARM, buff.toString());
-            }
-            return new Token(c);
-            
-            /*
-             * in macro context, .label 
-             */
-        case '.':
-            if (this.fMacro && this.Column() == 0)
-            {
-                StringBuffer buff = new StringBuffer();
-                c = NextChar();
-                if (ctype.isalpha(c) || c == '_' || c == '~')
-                {
-                    do
-                    {
-                        buff.append((char)c);
-                        c = NextChar();
-                    }
-                    while (ctype.isalnum(c) || c == '_' || c == '~');
-                }
-
-                Poke(c);
-                if (buff.length() > 0) 
-                    return new Token(Token.MACRO_LAB, buff.toString());                
-            }
-            // TODO -- .NOT., etc.
-            return new Token(c);
             /*
              * a symbol or something else to process later.
              */
@@ -248,4 +197,58 @@ public class Lexer_Orca extends Lexer
         }   
     }
     
+    /*
+     * *any char may be used as a string delimiter.
+     * delimiters < ' will have the hi-bit set, >= '
+     * will not.
+     * the delimiter may not appear in the string itself. 
+     */
+    public Token ParseString()
+    {
+        int c;
+        int delim = NextChar();
+        
+        if (delim == EOF || delim == '\r' || delim == '\n')
+        {
+            Poke(delim);
+            return __NextToken();
+        }
+        
+        StringBuffer buff = new StringBuffer();
+        while(true)
+        {
+            c = NextChar();
+            if (c == EOF)
+            {
+                // TODO -- throw an error.
+                return new Token(Token.EOF);
+            }
+            // may be the end or it may be an escaped quote.
+            if (c == delim)
+            {
+               return new Token(Token.STRING, buff.toString());
+            }
+            if (delim < (int)'\'')
+                c |= 0x80;  // set the hi-bit
+            buff.append((char)c);                   
+        }               
+    }
+    /*
+     * parse hex data, no leading $.
+     */
+    public Token ParseHex()
+    {
+        int c = NextChar();
+        int i;
+        int value = 0;
+        while (ctype.isxdigit(c))
+        {
+            value = value <<= 4;
+            value += ctype.toint(c);
+            c = NextChar();
+        }
+        // todo -- error if i == 0?
+        Poke(c);
+        return new Token(Token.NUMBER, value);
+    }
 }

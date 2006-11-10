@@ -12,7 +12,7 @@ import omf.*;
  */
 
 
-public class Parser
+public class Orca_Parser
 {
     /*
      * start the parsing.
@@ -21,7 +21,7 @@ public class Parser
         
     private HashMap<String, INSTR> fOpcodes;
     private HashMap<String, Directive> fDirectives;
-    private ArrayList fData;
+    private JunkPile fData;
     private OMF_Segment fSegment;
     private boolean fM;
     private boolean fX;
@@ -38,7 +38,7 @@ public class Parser
 
     
 
-    public Parser()
+    public Orca_Parser()
     {
         fSegment = null;
         fLocals = null;
@@ -259,7 +259,7 @@ public class Parser
 
         fLocals = new HashMap<String, Expression>();
 
-        fData = new ArrayList();
+        fData = new JunkPile();
 
        
         if (fMachine == INSTR.m65816)
@@ -286,6 +286,85 @@ public class Parser
         // merging DS
         // merging byte[]s
         
+        Reduce();
+        
+ 
+        
+    }
+    
+    private void Reduce()
+    {
+        
+        boolean delta = false;
+        
+        // loop through fData and reduce any expressions. 
+        // repeat until no more changes are possible.
+        
+        
+        do
+        {
+            delta = false;
+            ArrayList ops = fData.GetArrayList();
+            fData = new JunkPile();
+            int i;
+            int l = ops.size();
+            for(i = 0; i < l; i++)
+            {
+                Object op = ops.get(i);
+                if (op instanceof Expression)
+                {
+                    Expression e = (Expression)op;
+                   // reduce
+                    try
+                    {
+                        e.Reduce(fLocals, false);
+                    }
+                    catch (AsmException err)
+                    {
+                        // TODO Auto-generated catch block
+                        err.printStackTrace();
+                    }
+                    Integer v = e.Value();
+                    if (v != null)
+                    {
+                        delta = true;
+                            
+                        // todo -- check for dp overflow.
+                        int value = v.intValue();
+                        switch(e.Size())
+                        {
+                        case 0:
+                            break;
+                        case 1:
+                            fData.add8(value, 0);
+                            break;
+                        case 2:
+                            fData.add16(value, 0);
+                            break;
+                        case 3:
+                            fData.add24(value, 0);
+                            break;
+                        case 4:
+                            fData.add32(value, 0);
+                            break;
+                        }
+                    }
+                    else
+                    {
+                        fData.add(e);
+                    }
+                }
+                else if (op instanceof OMF_Opcode)
+                    fData.add((OMF_Opcode)op);
+            }
+                        
+        } while (delta);
+        
+        //
+        fData.add(new OMF_Eof());
+        // TODO -- convert epxressions to OMF_Expressions, save to disk.
+ 
+        /*
         ArrayList temp = new ArrayList();
         OMF_Data data = new OMF_Data();
         int l = fData.size();
@@ -360,8 +439,8 @@ public class Parser
             data.Reset();
         }
         fSegment.AddOpcode(new OMF_Eof());
-        // todo -- save.
-        
+        // todo -- save.        
+        */
     }
 
     /*

@@ -16,7 +16,8 @@ public abstract class Lexer
     private int fLine;
     private int fColumn;
     protected Token fToken;
-    protected Token fLast;    
+    protected Token fLast;
+    protected boolean fMacro;
     
     public Lexer(InputStream io)
     {
@@ -99,7 +100,7 @@ public abstract class Lexer
         int rv;
         if (fPeek == EOF) return EOF;
         
-        rv = (fPeek == UNKNOWN) ? NextCharInternal() : fPeek;
+        rv = (fPeek == UNKNOWN) ? __NextChar() : fPeek;
         
         fPeek = UNKNOWN;
         fColumn++;
@@ -107,7 +108,7 @@ public abstract class Lexer
         return rv;       
     }
 
-    private int NextCharInternal()
+    private int __NextChar()
     {
 
         try
@@ -125,7 +126,7 @@ public abstract class Lexer
     {
         if (fPeek == UNKNOWN)
         {
-            fPeek = NextCharInternal();           
+            fPeek = __NextChar();           
         }
         
         return fPeek;

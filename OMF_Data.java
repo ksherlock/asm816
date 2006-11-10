@@ -203,6 +203,13 @@ public class OMF_Data extends OMF_Const
         fData = null;
     }
  
+    public byte[] toByte()
+    {
+        if (fLength == 0) return null;
+        byte[] out = new byte[fLength];
+        System.arraycopy(fData, 0, out, 0, fLength);
+        return out;
+    }
     /*
     public byte[] Data()
     {
@@ -226,6 +233,6 @@ public class OMF_Data extends OMF_Const
     }
     public OMF_Const toConst()
     {
-        return new OMF_Const(fData.clone(), fLength);   
+        return new OMF_Const(fData, fLength);   
     }
 }

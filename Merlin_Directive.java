@@ -3,17 +3,15 @@
  * Nov 8, 2006 5:20:09 PM
  */
 
-public enum Directive_Merlin
+public enum Merlin_Directive
 {
     ADR,
     ADRL,
-    ASC,
     CAS,
     CYC,
     DA,
     DATE,
     DB,
-    DCI,
     DFB,
     DS,
     DSK,
@@ -24,16 +22,12 @@ public enum Directive_Merlin
     EXT,
     FLO,
     FLS,
-    HEX,
     INV,
     LST,
     MX,
     ORG,
     PUT,
-    REV,
     SAV,
-    STR,
-    STRL,
     TTL,
     TYP,
     USE,
@@ -43,4 +37,12 @@ public enum Directive_Merlin
     MAC,
     EOM,
     PMC,
+    
+    // Data declarations
+    ASC,
+    DCI,
+    HEX,
+    REV,
+    STR,
+    STRL,
 }

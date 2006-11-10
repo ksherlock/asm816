@@ -102,4 +102,6 @@ public final class Token
     public static final int SYMBOL = 258;
     public static final int EOL = 259;
     public static final int STRING = 260;
+    public static final int MACRO_PARM = 261;
+    public static final int MACRO_LAB = 262;
 }
