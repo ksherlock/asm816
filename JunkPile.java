@@ -88,12 +88,29 @@ public class JunkPile
             }                      
         }
         
-        add((OMF_Opcode)data);
+        if (fTemp.CodeSize() > 0)
+        {
+            fData.add(fTemp.toConst());
+            fTemp.Reset();
+        }
+        fData.add(data);
+        fPC += data.CodeSize();
     }
     
     @SuppressWarnings("unchecked")
     public void add(OMF_Opcode data)
     {
+        if (data instanceof OMF_DS)
+        {
+            add((OMF_DS)data);
+            return;
+        }
+        if (data instanceof OMF_Const)
+        {
+            add((OMF_Const)data);
+            return;
+        }
+        
         if (fTemp.CodeSize() > 0)
         {
             fData.add(fTemp.toConst());
@@ -114,6 +131,27 @@ public class JunkPile
         
         fData.add(data);
         fPC += data.Size();
+    }
+    public void add(ArrayList data)
+    {
+        for (Object o : data)
+        {
+            add_object(o);
+        }
+    }
+    // this has a different name so it won't be called accidently.
+    public void add_object(Object data)
+    {
+        if (data == null) return;
+        if (data instanceof OMF_Opcode)
+            add((OMF_Opcode)data);
+        else if (data instanceof byte[])
+            add((byte[])data);
+        else if (data instanceof Expression)
+            add((Expression)data);
+        else if (data instanceof ArrayList)
+            add((ArrayList)data);
+        // skip it.
     }
     
     @SuppressWarnings("unchecked")

@@ -39,6 +39,14 @@ public class OMF_Expr extends OMF_Opcode {
 		fGenBytes = 0;
 		fExpr = new ArrayList();
 	}
+    public OMF_Expr(int type, int bytes, ArrayList expr)
+    {
+        super(type);
+        fGenBytes = 0;
+        if (expr != null)
+            fExpr = (ArrayList)expr.clone();
+        else expr = new ArrayList();
+    }
 	public int CodeSize()
 	{
 		return fGenBytes;

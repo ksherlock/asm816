@@ -38,7 +38,7 @@ public class Orca_Parser
 
     
 
-    public Orca_Parser()
+    public Orca_Parser(FileOutputStream outfile)
     {
         fSegment = null;
         fLocals = null;
@@ -52,6 +52,7 @@ public class Orca_Parser
         fMachine = INSTR.m65816;
         fMSB = false;
         
+        fFile = outfile;
         
         fOpcodes = new HashMap<String, INSTR>();
         fDirectives = new HashMap<String, Directive>();
@@ -68,14 +69,16 @@ public class Orca_Parser
         }
 
         fError = 0;
+        /*
         try
         {
-            File f = File.createTempFile("asm65816", "tmp");
+            File f = File.createTempFile("asm65816", ".tmp");
             
             fFile = new FileOutputStream(f);
         }
         catch (Exception e)
         {}
+        */
     }
 
     public void Parse(Lexer_Orca lex)
@@ -108,7 +111,7 @@ public class Orca_Parser
                 case Token.EOF:
                     return;
                 case Token.EOL:
-                    break;
+                    continue;
                 case Token.SPACE:
                     break;
                 case Token.SYMBOL:
@@ -176,7 +179,7 @@ public class Orca_Parser
                 case ALIGN:
                     {
                         lex.Expect(Token.SPACE);
-                        Expression e = new Expression();
+                        Expression e = new Expression(fCase);
                         e.ParseExpression(lex);
                         lex.Expect(Token.EOL);
                         e.Reduce(null, false);
@@ -299,18 +302,15 @@ public class Orca_Parser
         
         // loop through fData and reduce any expressions. 
         // repeat until no more changes are possible.
-        
-        
+              
         do
         {
             delta = false;
             ArrayList ops = fData.GetArrayList();
             fData = new JunkPile();
-            int i;
-            int l = ops.size();
-            for(i = 0; i < l; i++)
+
+            for(Object op : ops)
             {
-                Object op = ops.get(i);
                 if (op instanceof Expression)
                 {
                     Expression e = (Expression)op;
@@ -360,87 +360,24 @@ public class Orca_Parser
                         
         } while (delta);
         
-        //
-        fData.add(new OMF_Eof());
-        // TODO -- convert epxressions to OMF_Expressions, save to disk.
- 
-        /*
-        ArrayList temp = new ArrayList();
-        OMF_Data data = new OMF_Data();
-        int l = fData.size();
-        int i = 0;
-        while (i < l)
+
+        // Now, go through a final time 
+        // save to disk.
+        ArrayList ops = fData.GetArrayList();
+
+        for (Object op: ops)
         {
-            Object o = fData.get(i++);
-            if (o instanceof OMF_DS)
+            if (op instanceof Expression)
             {
-                int size = ((OMF_DS)o).CodeSize();
-                while (i < l)
-                {
-                    Object o2 = fData.get(i);
-                    if (!(o2 instanceof OMF_DS)) break;
-                    size += ((OMF_DS)o2).CodeSize();
-                    i++;
-                }
-                o = new OMF_DS(size);
+                Expression e = (Expression)op;
+                op = e.toOpcode();
             }
-            else if (o instanceof byte[])
-            {
-                data.AppendData((byte[])o);
-                continue;
-            }
-            else if (o instanceof String)
-            {
-                String s = (String)o;
-                data.AppendData(s.getBytes());
-            }
-            if (o instanceof Expression)
-            {
-                Expression e = (Expression)o;
-                e.Reduce(fLocals, false);
-                Integer v = e.Value();
-                if (v != null)
-                {
-                    // todo -- check for dp overflow.
-                    int value = v.intValue();
-                    switch(e.Size())
-                    {
-                    case 0:
-                        break;
-                    case 1:
-                        data.AppendInt8(value, 0);
-                        break;
-                    case 2:
-                        data.AppendInt16(value, 0);
-                        break;
-                    case 3:
-                        data.AppendInt24(value, 0);
-                        break;
-                    case 4:
-                        data.AppendInt32(value, 0);
-                        break;
-                    }
-                    continue;
-                }
-                // TODO -- convert to appropriate equ/gequ/expr/lexpr/ etc.
-            }
-            
-            if (data.CodeSize() != 0)
-            {
-                fSegment.AddOpcode(data.toConst());
-                data.Reset();
-            }
-            fSegment.AddOpcode((OMF_Opcode)o);
-        }
-        // save any lingering data.
-        if (data.CodeSize() != 0)
-        {
-            fSegment.AddOpcode(data.toConst());
-            data.Reset();
+            fSegment.AddOpcode((OMF_Opcode)op);
         }
         fSegment.AddOpcode(new OMF_Eof());
-        // todo -- save.        
-        */
+        fSegment.Save(fFile);
+        
+
     }
 
     /*
@@ -488,7 +425,7 @@ public class Orca_Parser
                 case KIND:
                     {
                         lex.Expect(Token.SPACE);
-                        e = new Expression();
+                        e = new Expression(fCase);
                         e.ParseExpression(lex);
                         lex.Expect(Token.EOL);
                         e.Reduce(null, false);
@@ -503,12 +440,28 @@ public class Orca_Parser
 
                 case EQU:
                 case GEQU:
+                    // TODO -- store gequ value in global array?
+                    // TODO -- only store equ to disk if data segment?
+                    
                     lex.Expect(Token.SPACE);
-                    e = new Expression();
+                    e = new Expression(fCase);
                     e.ParseExpression(lex);
                     e.SetPC(fPC);
                     lex.Expect(Token.EOL);
-                    // if gequ, then also need to save in the OMF file.
+                    
+                    /*
+                     * TODO -- equ only stored if in a datasegment.
+                     */
+                    if (lab != null)
+                    {
+                        e.Reduce(null, false);
+                        e.SetExpressionName(lab);
+                        e.SetExpressionType(dir == Directive.EQU ?
+                                OMF.OMF_EQU : OMF.OMF_GEQU);
+                        
+                        fData.add(e.toOpcode());
+                        fData.add(e);                        
+                    }
                     break;
 
                 case ENTRY:
@@ -529,7 +482,7 @@ public class Orca_Parser
                     {
                         Expression ex;
                         lex.Expect(Token.SPACE);
-                        ex = new Expression();
+                        ex = new Expression(fCase);
                         ex.ParseExpression(lex);
                         lex.Expect(Token.EOL);
                         ex.SetPC(pc);
@@ -594,8 +547,8 @@ public class Orca_Parser
                     Expression e1,
                     e2;
                     lex.Expect(Token.SPACE);
-                    e1 = new Expression();
-                    e2 = new Expression();
+                    e1 = new Expression(fCase);
+                    e2 = new Expression(fCase);
                     e1.ParseExpression(lex);
                     lex.Expect((int) ',');
                     e2.ParseExpression(lex);
@@ -632,7 +585,10 @@ public class Orca_Parser
                     if (size > 1)
                     {
                         op.SetSize(size - 1);
-                        // TODO -- set type.
+                        //TODO -- set type.
+                        if (INSTR.isBranch(opcode))
+                            op.SetExpressionType(OMF.OMF_RELEXPR);
+                        
                         fData.add(op);
                     }
                     fPC += size;
@@ -699,7 +655,7 @@ public class Orca_Parser
         t = lex.NextToken();
         if (t.Type() == Token.EOL)
         {
-            return new Operand(AddressMode.IMPLIED);
+            return new Operand(AddressMode.IMPLIED, fCase);
         }
         t.Expect(Token.SPACE);
         
@@ -719,7 +675,7 @@ public class Orca_Parser
             {
                 lex.NextChar();
             }
-            op = new Operand(AddressMode.IMMEDIATE);
+            op = new Operand(AddressMode.IMMEDIATE, fCase);
             op.ParseExpression(lex);
 
             // ^ > --> shift it.
@@ -742,7 +698,7 @@ public class Orca_Parser
             c = lex.Peek();
             if (c == '<')
                 lex.NextChar();
-            op = new Operand(AddressMode.INDIRECT);
+            op = new Operand(AddressMode.INDIRECT, fCase);
             op.ParseExpression(lex);
 
             // next char must be , or )
@@ -799,7 +755,7 @@ public class Orca_Parser
             if (c == '<')
                 lex.NextChar();
             
-            op = new Operand(AddressMode.LINDIRECT);
+            op = new Operand(AddressMode.LINDIRECT, fCase);
             op.ParseExpression(lex);
             lex.Expect((int)']');
 
@@ -825,7 +781,7 @@ public class Orca_Parser
              */
         case '|':
             lex.NextChar();
-            op = new Operand(AddressMode.ABS);
+            op = new Operand(AddressMode.ABS, fCase);
             op.ParseExpression(lex);
 
             c = lex.Peek();
@@ -854,7 +810,7 @@ public class Orca_Parser
         case '>':
             lex.NextChar();
             
-            op = new Operand(AddressMode.ABSLONG);
+            op = new Operand(AddressMode.ABSLONG, fCase);
             op.ParseExpression(lex);
             c = lex.Peek();
             if (c == ',')
@@ -880,7 +836,7 @@ public class Orca_Parser
         case '<':
             lex.NextChar();
             
-            op = new Operand(AddressMode.DP);
+            op = new Operand(AddressMode.DP, fCase);
             op.ParseExpression(lex);
 
             c = lex.Peek();
@@ -911,7 +867,7 @@ public class Orca_Parser
         default:
             // TODO -- reduce, convert to dp/abslong ???
             // or mark as possibly unknown??
-            op = new Operand(AddressMode.ABS);
+            op = new Operand(AddressMode.ABS, fCase);
             op.ParseExpression(lex);
             // check for ,x,y
             c = lex.Peek();
@@ -963,40 +919,36 @@ public class Orca_Parser
         int size;
         int type;
         Token t;
+        String s;
         int mod;
         
         lex.Expect(Token.SPACE);
         
         for (;;)
         {
-            t = lex.NextToken();
-            type = t.Type();
-            if (type == Token.EOL)
-                throw new AsmException(Error.E_UNEXPECTED, t);
-
             repeat = 0;
             mod = 0;
-            if (type == Token.NUMBER)
+            
+            int c = lex.Peek();
+            if (ctype.isdigit(c))
             {
+                t = lex.Expect(Token.NUMBER);
                 repeat = t.Value();
-                t = lex.NextToken();
             }
-            t.Expect(Token.SYMBOL);
-            String s = t.toString();
-            if (s.length() != 1)
-            {
-                throw new AsmException(Error.E_UNEXPECTED, t);
-            }
-            type = ctype.tolower(s.charAt(0));
+            else repeat = 1;
+            
+            c = lex.NextChar();
+            type = ctype.tolower(c);
+
             switch (type)
             {
             case 'i':
             case 'a':
-                size = lex.Peek();
-                if (ctype.isdigit(size))
+                c = lex.Peek();
+                if (ctype.isdigit(c))
                 {
-                    lex.NextChar();
-                    size = ctype.toint(size);
+                    t = lex.Expect(Token.NUMBER);
+                    size = t.Value();
                     // TODO -- verify 1-8
                 }
                 else size = 2;
@@ -1015,14 +967,14 @@ public class Orca_Parser
                 break;
             case 's':
             case 'r':
-                size = lex.Peek();
-                if (ctype.isdigit(size))
+                c = lex.Peek();
+                if (ctype.isdigit(c))
                 {
-                    lex.NextChar();
-                    size = size - '0';
+                    t = lex.Expect(Token.NUMBER);
+                    size = t.Value();
                     // TODO -- verify 1-4
                 }
-                else size = 4;
+                else size = 2;
                 break;
             
             case 'h':
@@ -1034,7 +986,7 @@ public class Orca_Parser
                 size = -1;
                 break;
             default:
-                throw new AsmException(Error.E_UNEXPECTED, t);
+                throw new AsmException(Error.E_UNEXPECTED, new Token(type));
             
             }
             
@@ -1042,36 +994,42 @@ public class Orca_Parser
             s = t.toString();
             
             
-            // todo -- have each one return a byte[] which will be written
-            // appended to fData repeat times?
+            // TODO -- some of them can result in a list of references...
+            // have to decode the best way ot handle it, with support for
+            // repeat.
+            Object data = null;
             switch(type)
             {
-
-
             case 'b':
-                DC_B(s);
+                data = Orca_DC.DC_B(s);
                 break;
                 
             case 'c':
-                // if fMSB is true, we must set bit 8 on all chars.
-                if (fMSB)
-                {
-                    int i;
-                    int l = s.length();
-                    StringBuffer s2 = new StringBuffer(l);
-                    for (i = 0; i < s.length(); i++)
-                    {
-                        char c = s.charAt(i);
-                        s2.setCharAt(i, (char)(c | 0x80));
-                    }
-                    fData.add(s2.toString());
-                } 
+                data = Orca_DC.DC_C(s, fMSB);
+                break;
+ 
             case 'h':
-                DC_H(s);
-                break;                
+                data = Orca_DC.DC_H(s);
+                break;
+                
+            case 'i':
+            case 'a':
+                data = Orca_DC.DC_I(s, size, fPC, fCase, mod);
+                break;
+                
+            case 'r':
+                data = Orca_DC.DC_R(s, fCase);
+                break;
+                
+            case 's':
+                data = Orca_DC.DC_S(s, size, fCase);
+                break;
+                
             }
-            
-            
+            // store repeat times.
+            if (repeat < 1) repeat = 1;
+            for (int i = 0; i < repeat; i++)
+                fData.add_object(data);
             
             t = lex.NextToken();
             type = t.Type();
@@ -1084,69 +1042,8 @@ public class Orca_Parser
         
     }
     
-    @SuppressWarnings("unchecked")
-    private void DC_H(String s)
-    {
-        int l = s.length();
-        int i = 0;
-        int temp = 0;
-        boolean first = true;
-        
-        for (i = 0; i < l; i++)
-        {
-            int c = s.charAt(i);
-            if (ctype.isspace(c)) continue;
-            
-            if (!ctype.isxdigit(c)) ; /* error */
-            
-            if (first)
-            {
-                temp = ctype.toint(c);
-                first = false;
-            }
-            else
-            {
-                temp = (temp << 4) | ctype.toint(c);
-                fData.add(new byte[] {(byte)temp});
-                first = true;
-            }
-        }
-        if (!first)
-        {
-            temp = temp << 4;
-            fData.add(new byte[] {(byte)temp});
-        }
-    }
     
-    @SuppressWarnings("unchecked")
-    private void DC_B(String s)
-    {
-        int l = s.length();
-        int pos = 0;
-        int temp = 0;
-        for (int i = 0; i < l; i++)
-        {
-            int c = s.charAt(i);
-            if (ctype.isspace(c)) continue;
-            
-            
-            temp = temp << 1;
-            if (c == '1') temp |= 0x01;
-            else if (c == '0') ;
-            else ; /* error */
-            if (pos++ == 7)
-            {
-                fData.add(new byte[] {(byte) temp});
-                pos = 0;
-            }
-            
-        }
-        if (pos > 0)
-        {
-            temp = temp << (7-pos);
-            fData.add(new byte[] {(byte) temp});
-        }
-    }
+
 
 
  

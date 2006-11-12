@@ -13,7 +13,10 @@ public class Lexer_Orca extends Lexer
     {
         super(io);
     }
-       
+    public Lexer_Orca(String s)
+    {
+        super(s);
+    }       
     protected Token __NextToken()
     {
         int c = NextChar();
@@ -21,11 +24,8 @@ public class Lexer_Orca extends Lexer
         
         switch(c)
         {
-        // always return an EOL prior to the EOF.
         case EOF:
-            if (fLast == null || fLast.Type() != EOF)
-                return new Token(Token.EOL);
-            return new Token(Token.EOF);
+            return Token_EOF;
 
         case ' ':
         case '\t':
@@ -39,7 +39,7 @@ public class Lexer_Orca extends Lexer
                if (c == '\r' || c == '\n' || c == ';')
                {
                    SkipLine();
-                   return new Token(Token.EOL);
+                   return Token_EOL;
                }
 
                return new Token(Token.SPACE);
@@ -57,7 +57,7 @@ public class Lexer_Orca extends Lexer
         case '\n':
             Poke(c);
             SkipLine();
-            return new Token(Token.EOL);
+            return Token_EOL;
             
             /*
              * hexadecimal number.
@@ -144,7 +144,6 @@ public class Lexer_Orca extends Lexer
                     value += (c - '0');
                     c = NextChar();
                 }
-                // TODO -- if c == '.' or 'e' then this should be a REAL number??
                 Poke(c);
                 
                 return new Token(Token.NUMBER, value);
@@ -167,6 +166,7 @@ public class Lexer_Orca extends Lexer
                         // TODO -- throw an error.
                         return new Token(Token.EOF);
                     }
+                    // TODO -- throw error if \r or \n.
                     // may be the end or it may be an escaped quote.
                     if (c == quote)
                     {

@@ -26,9 +26,9 @@
 public class Operand extends Expression
 {
 
-    public Operand(AddressMode type)
+    public Operand(AddressMode type, boolean case_sensitive)
     {
-        super();
+        super(case_sensitive);
         fType = type;
     }
     public AddressMode Type()

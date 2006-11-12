@@ -1,3 +1,7 @@
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 import java.util.ArrayList;
 import java.util.HashMap;
 
@@ -60,18 +64,57 @@ public class asm
         if (args.length == 0)
         {
             // stdin.
-            //if (outf == null) 
-            //{
-            //   System.err.println("output file not specified.");
-            //    return;
-            //}
-            Lexer_Orca lex = new Lexer_Orca(System.in);
-            Orca_Parser p = new Orca_Parser();
-            p.Parse(lex);
+            if (outf == null || outf.length() == 0)
+            {
+                outf = "gsout.o";
+            }
+            try
+            {
+                FileOutputStream fout = new FileOutputStream(outf);
+                Orca_Parser p = new Orca_Parser(fout);
+                Lexer_Orca lex = new Lexer_Orca(System.in);
+                p.Parse(lex);
+            }
+            catch (FileNotFoundException e)
+            {
+            }
+            
         }
         else
         {
-            
+            if (outf != null && outf.length() == 0) outf = null;
+            for (int i = 0; i < args.length; i++)
+            {
+                FileInputStream fin;
+                FileOutputStream fout;
+                try
+                {
+                    fin = new FileInputStream(args[i]);
+                    
+                    if (outf != null) fout = new FileOutputStream(outf);
+                    else
+                    {
+                        File inf = new File(args[i]);
+                        String name = inf.getName();
+                        int idx = name.lastIndexOf('.');
+                        if (idx == -1)
+                            name = inf + ".o";
+                        else
+                        {
+                            name = name.substring(0, idx) + ".o";
+                        }
+                        fout = new FileOutputStream(name);
+                    }
+                    
+                    Lexer_Orca lex = new Lexer_Orca(fin);
+                    Orca_Parser p = new Orca_Parser(fout);
+                    p.Parse(lex);
+                }
+                catch (FileNotFoundException e)
+                {
+                }
+                
+            }
         }
 
     }

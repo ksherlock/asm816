@@ -20,7 +20,9 @@ public class OMF_Equ extends OMF_Local {
     public OMF_Equ(int type, String label, int length, int attr, boolean priv, ArrayList expr)
     {
         super(type, label, length, attr, priv);
-        fExpr = expr;
+        if (expr != null)
+            fExpr = (ArrayList)expr.clone();
+        else fExpr = new ArrayList();
     }
 
 	public int CodeSize()

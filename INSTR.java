@@ -140,8 +140,16 @@ public enum INSTR
         if ((attr & mX) == mX)
             if (x) size++;
         
-        return size;
+        return size;       
+    }
+    static public int Time(int opcode, boolean m, boolean x)
+    {
+        int attr = __timing[opcode];
+        int time = attr & 0x0f;
+        if (m) time += (attr >> 8) & 0x0f;
+        if (x) time += (attr >> 16) & 0x0f;
         
+        return time;
     }
      
     private static final short[][] __opcodes =
@@ -504,7 +512,7 @@ public enum INSTR
         2 | m65816,                 // 07 ora [dp]
         1 | m6502,                  // 08 php
         2 | m6502 | mM,             // 09 ora #imm
-        1 | m6502,                  // 0a ora a
+        1 | m6502,                  // 0a asl a
         1 | m65816,                 // 0b phd
         3 | m65c02,                 // 0c tsb |abs
         3 | m6502,                  // 0d ora |abs
@@ -768,7 +776,284 @@ public enum INSTR
         
     };
 
-    
+    //first byte: base time
+    // 2nd byte: + if 16 bit akku
+    // 3rd byte: + if 16 bit x/y
+    private static final int[] __timing = 
+    {
+        7,                          // 00 brk #imm
+        6 | 0x0100,                 // 01 ora (dp,x)
+        7,                          // 02 cop #imm
+        4 | 0x0100,                 // 03 ora ,s
+        5 | 0x0200,                 // 04 tsb <dp
+        3 | 0x0100,                 // 05 ora <dp
+        5 | 0x0200,                 // 06 asl <dp
+        6 | 0x0100,                 // 07 ora [dp]
+        3,                          // 08 php
+        2 | 0x0100,                 // 09 ora #imm
+        2,                          // 0a asl a
+        4,                          // 0b phd
+        6 | 0x0200,                 // 0c tsb |abs
+        4 | 0x0100,                 // 0d ora |abs
+        6 | 0x0200,                 // 0e asl |abs
+        5 | 0x0100,                 // 0f ora >abs
+
+        2,                          // 10 bpl
+        5 | 0x0100,                 // 11 ora (dp),y
+        5 | 0x0100,                 // 12 ora (dp)
+        7 | 0x0100,                 // 13 ora ,s,y
+        5 | 0x0200,                 // 14 trb <dp
+        4 | 0x0100,                 // 15 ora <dp,x
+        6 | 0x0200,                 // 16 asl <dp,x
+        6 | 0x0100,                 // 17 ora [dp],y
+        2,                          // 18 clc
+        4 | 0x0100,                 // 19 ora |abs,y
+        2,                          // 1a inc a
+        2,                          // 1b tcs
+        6 | 0x0200,                 // 1c trb |abs
+        4 | 0x0100,                 // 1d ora |abs,x
+        7 | 0x0200,                 // 1e asl |abs,x
+        5 | 0x0100,                 // 1f ora >abs,x
+        
+        6,                          // 20 jsr |abs
+        6 | 0x0100,                 // 21 and (dp,x)
+        8,                          // 22 jsl >abs
+        4 | 0x0100,                 // 23 and ,s
+        3 | 0x0100,                 // 24 bit <dp
+        3 | 0x0100,                 // 25 and <dp
+        5 | 0x0200,                 // 26 rol <dp
+        6 | 0x0100,                 // 27 and [dp]
+        4,                          // 28 plp
+        2 | 0x0100,                 // 29 and #imm
+        2,                          // 2a rol a
+        5,                          // 2b pld
+        4 | 0x0100,                 // 2c bit |abs
+        4 | 0x0100,                 // 2d and |abs
+        6 | 0x0200,                 // 2e rol |abs
+        5 | 0x0100,                 // 2f and >abs
+        
+        2,                          // 30 bmi 
+        5 | 0x0100,                 // 31 and (dp),y
+        5 | 0x0100,                 // 32 and (dp)
+        7 | 0x0100,                 // 33 and ,s,y
+        4 | 0x0100,                 // 34 bit dp,x
+        4 | 0x0100,                 // 35 and dp,x
+        6 | 0x0200,                 // 36 rol <dp,x
+        6 | 0x0100,                 // 37 and [dp],y
+        2,                          // 38 sec
+        4 | 0x0100,                 // 39 and |abs,y
+        2,                          // 3a dec a
+        2,                          // 3b tsc
+        4 | 0x0100,                 // 3c bits |abs,x
+        4 | 0x0100,                 // 3d and |abs,x
+        7 | 0x0200,                 // 3e rol |abs,x
+        5 | 0x0100,                 // 3f and >abs,x
+        
+        6,                          // 40 rti
+        6 | 0x0100,                 // 41 eor (dp),x
+        0,                          // 42 wdm #imm
+        4 | 0x0100,                 // 43 eor ,s
+        0,                          // 44 mvp x,x
+        3 | 0x0100,                 // 45 eor dp
+        5 | 0x0200,                 // 46 lsr dp
+        6 | 0x0100,                 // 47 eor [dp],y
+        3 | 0x0100,                 // 48 pha
+        2 | 0x0100,                 // 49 eor #imm
+        2,                          // 4a lsr a
+        3,                          // 4b phk
+        3,                          // 4c jmp |abs
+        4 | 0x0100,                 // 4d eor |abs
+        6 | 0x0200,                 // 4e lsr |abs
+        5 | 0x0100,                 // 4f eor >abs      
+        
+        2,                          // 50 bvc
+        5 | 0x0100,                 // 51 eor (dp),y
+        5 | 0x0100,                 // 52 eor (dp)
+        7 | 0x0100,                 // 53 eor ,s,y
+        0,                          // 54 mvn x,x
+        4 | 0x0100,                 // 55 eor dp,x
+        6 | 0x0200,                 // 56 lsr dp,x
+        6 | 0x0100,                 // 57 eor [dp],y
+        2,                          // 58 cli
+        4 | 0x0100,                 // 59 eor |abs,y
+        3 | 0x010000,               // 5a phy
+        2,                          // 5b tcd
+        4,                          // 5c jml >abs
+        4 | 0x0100,                 // 5d eor |abs,x
+        7 | 0x0200,                 // 5e lsr |abs,x
+        5 | 0x0100,                 // 5f eor >abs,x
+
+        6,                          // 60 rts
+        6 | 0x0100,                 // 61 adc (dp,x)
+        6,                          // 62 per |abs
+        4 | 0x0100,                 // 63 adc ,s
+        3 | 0x0100,                 // 64 stz <dp
+        3 | 0x0100,                 // 65 adc <dp
+        5 | 0x0100,                 // 66 ror <dp
+        6 | 0x0100,                 // 67 adc [dp]
+        4 | 0x0100,                 // 68 pla
+        2 | 0x0100,                 // 69 adc #imm
+        2,                          // 6a ror a 
+        6,                          // 6b rtl
+        5,                          // 6c jmp (abs)
+        4 | 0x0100,                 // 6d adc |abs
+        6 | 0x0200,                 // 6e ror |abs
+        5 | 0x0100,                 // 6f adc >abs
+  
+        2,                          // 70 bvs
+        5 | 0x0100,                 // 71 adc (dp),y
+        5 | 0x0100,                 // 72 adc (dp)
+        7 | 0x0100,                 // 73 adc ,s,y
+        4 | 0x0100,                 // 74 stz dp,x
+        4 | 0x0100,                 // 75 adc dp,x
+        6 | 0x0200,                 // 76 ror dp,x
+        6 | 0x0100,                 // 77 adc [dp],y
+        2,                          // 78 sei
+        4 | 0x0100,                 // 79 adc |abs,y
+        4 | 0x010000,               // 7a ply
+        2,                          // 7b tdc
+        6,                          // 7c jmp (abs,x)
+        4 | 0x0100,                 // 7d adc |abs,x
+        7 | 0x0200,                 // 7e ror |abs,x
+        5 | 0x0100,                 // 7f adc >abs,x
+        
+        3,                          // 80 bra 
+        6 | 0x0100,                 // 81 sta (dp,x)
+        4,                          // 82 brl |abs
+        4 | 0x0100,                 // 83 sta ,s
+        3 | 0x010000,               // 84 sty <dp
+        3 | 0x0100,                 // 85 sta <dp
+        3 | 0x010000,               // 86 stx <dp
+        6 | 0x0100,                 // 87 sta [dp]
+        2,                          // 88 dey
+        2 | 0x0100,                 // 89 bit #imm
+        2,                          // 8a txa
+        3,                          // 8b phb
+        4 | 0x010000,               // 8c sty |abs
+        4 | 0x0100,                 // 8d sta |abs
+        4 | 0x010000,               // 8e stx |abs
+        5 | 0x0100,                 // 8f sta >abs
+        
+        2,                          // 90 bcc
+        6 | 0x0100,                 // 91 sta (dp),y
+        5 | 0x0100,                 // 92 sta (dp)
+        7 | 0x0100,                 // 93 sta ,s,y
+        4 | 0x010000,               // 94 sty dp,x
+        4 | 0x0100,                 // 95 sta dp,x
+        4 | 0x010000,               // 96 stx dp,y
+        6 | 0x0100,                 // 97 sta [dp],y
+        2,                          // 98 tya
+        5 | 0x0100,                 // 99 sta |abs,y
+        2,                          // 9a txs
+        2,                          // 9b txy
+        4 | 0x0100,                 // 9c stz |abs
+        5 | 0x0100,                 // 9d sta |abs,x
+        5 | 0x0100,                 // 9e stz |abs,x
+        5 | 0x0100,                 // 9f sta >abs,x
+        
+        2 | 0x010000,               // a0 ldy #imm
+        6 | 0x0100,                 // a1 lda (dp,x)
+        2 | 0x010000,               // a2 ldx #imm
+        4 | 0x0100,                 // a3 lda ,s
+        3 | 0x010000,               // a4 ldy <dp
+        3 | 0x0100,                 // a5 lda <dp
+        3 | 0x010000,               // a6 ldx <dp
+        6 | 0x0100,                 // a7 lda [dp]
+        2,                          // a8 tay
+        2 | 0x0100,                 // a9 lda #imm
+        2,                          // aa tax
+        4,                          // ab plb
+        4 | 0x010000,               // ac ldy |abs
+        4 | 0x0100,                 // ad lda |abs
+        4 | 0x010000,               // ae ldx |abs
+        5 | 0x0100,                 // af lda >abs   
+        
+        2,                          // b0 bcs
+        5 | 0x0100,                 // b1 lda (dp),y
+        5 | 0x0100,                 // b2 lda (dp)
+        7 | 0x0100,                 // b3 lda ,s,y
+        4 | 0x010000,               // b4 ldy <dp,x
+        4 | 0x0100,                 // b5 lda <dp,x
+        4 | 0x010000,               // b6 ldx <dp,y
+        6 | 0x0100,                 // b7 lda [dp],y
+        2,                          // b8 clv
+        4 | 0x0100,                 // b9 lda |abs,y
+        2,                          // ba tsx
+        2,                          // bb tyx
+        4 | 0x010000,               // bc ldy |abs,x
+        4 | 0x0100,                 // bd lda |abs,x
+        4 | 0x010000,               // be ldx |abs,y
+        5 | 0x0100,                 // bf lda >abs,x
+        
+        2 | 0x010000,               // c0 cpy #imm
+        6 | 0x0100,                 // c1 cmp (dp,x)
+        3,                          // c2 rep #
+        4 | 0x0100,                 // c3 cmp ,s
+        3 | 0x010000,               // c4 cpy <dp
+        3 | 0x0100,                 // c5 cmp <dp
+        5 | 0x0200,                 // c6 dec <dp
+        6 | 0x0100,                 // c7 cmp [dp]
+        2,                          // c8 iny
+        2 | 0x0100,                 // c9 cmp #imm
+        2,                          // ca dex
+        3,                          // cb WAI
+        4 | 0x010000,               // cc cpy |abs
+        4 | 0x0100,                 // cd cmp |abs
+        6 | 0x0200,                 // ce dec |abs
+        5 | 0x0100,                 // cf cmp >abs
+        
+        2,                          // d0 bne
+        5 | 0x0100,                 // d1 cmp (dp),y
+        5 | 0x0100,                 // d2 cmp (dp)
+        7 | 0x0100,                 // d3 cmp ,s,y
+        6,                          // d4 pei (dp)
+        4 | 0x0100,                 // d5 cmp dp,x
+        6 | 0x0200,                 // d6 dec dp,x
+        6 | 0x0100,                 // d7 cmp [dp],y
+        2,                          // d8 cld
+        4 | 0x0100,                 // d9 cmp |abs,y
+        3 | 0x010000,               // da phx
+        3,                          // db stp
+        6,                          // dc jml [abs]
+        4 | 0x0100,                 // dd cmp |abs,x
+        7 | 0x0200,                 // de dec |abs,x
+        5 | 0x0100,                 // df cmp >abs,x
+        
+        2 | 0x010000,               // e0 cpx #imm
+        6 | 0x0100,                 // e1 sbc (dp,x)
+        3,                          // e2 sep #imm
+        4 | 0x0100,                 // e3 sbc ,s
+        3 | 0x010000,               // e4 cpx <dp
+        3 | 0x0100,                 // e5 sbc <dp
+        5 | 0x0200,                 // e6 inc <dp
+        6 | 0x0100,                 // e7 sbc [dp]
+        2,                          // e8 inx
+        2 | 0x0100,                 // e9 sbc #imm
+        2,                          // ea nop
+        3,                          // eb xba
+        4 | 0x010000,               // ec cpx |abs
+        4 | 0x0100,                 // ed abc |abs
+        6 | 0x0200,                 // ee inc |abs
+        5 | 0x0100,                 // ef sbc >abs
+        
+        2,                          // f0 beq
+        5 | 0x0100,                 // f1 sbc (dp),y
+        5 | 0x0100,                 // f2 sbc (dp)
+        7 | 0x0100,                 // f3 sbc ,s,y
+        5,                          // f4 pea |abs
+        4 | 0x0100,                 // f5 sbc dp,x
+        6 | 0x0200,                 // f6 inc dp,x
+        6 | 0x0100,                 // f7 sbc [dp],y
+        2,                          // f8 sed
+        4 | 0x0100,                 // f9 sbc |abs,y
+        4 | 0x010000,               // fa plx
+        2,                          // fb xce
+        8,                          // fc jsr (abs)
+        4 | 0x0100,                 // fd sbc |abs,x
+        7 | 0x0200,                 // fe inc |abs,x
+        5 | 0x0100,                 // ff sbc >abs,x      
+        
+    };    
     
        
 

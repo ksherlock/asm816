@@ -28,6 +28,16 @@ public class OMF_RelExpr extends OMF_Opcode
         fDisplace = omf.ReadNumber();
         fExpr = OMF_Expression.ReadExpression(omf);
     }
+    public OMF_RelExpr(int bytes, int displace, ArrayList expr)
+    {
+        super(0xee);
+        fGenBytes = bytes;
+        fDisplace = displace;
+        if (expr != null)
+            fExpr = (ArrayList)expr.clone();
+        else
+            fExpr = new ArrayList();
+    }
     public ArrayList Expression()
     {
         return fExpr;

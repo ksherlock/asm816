@@ -20,11 +20,8 @@ public class Merlin_Lexer extends Lexer
         
         switch(c)
         {
-        // always return an EOL prior to the EOF.
         case EOF:
-            if (fLast == null || fLast.Type() != EOF)
-                return new Token(Token.EOL);
-            return new Token(Token.EOF);
+            return Token_EOF;
 
         case ' ':
         case '\t':

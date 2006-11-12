@@ -3,10 +3,12 @@ import java.util.HashMap;
 
 import omf.OMF;
 import omf.OMF_Equ;
+import omf.OMF_Expr;
 import omf.OMF_Expression;
 import omf.OMF_Label;
 import omf.OMF_Number;
 import omf.OMF_Opcode;
+import omf.OMF_RelExpr;
 
 /*
  * Created on Mar 11, 2006
@@ -15,7 +17,7 @@ import omf.OMF_Opcode;
 
 public class Expression implements Cloneable
 {
-    public Expression()
+    public Expression(boolean case_sensitive)
     {
         fPC = 0;
         fExpr = new ArrayList();
@@ -23,11 +25,13 @@ public class Expression implements Cloneable
         fReducing = false;
         fEType = 0;
         fEName = null;
+        fValue = null;
+        fCase = case_sensitive;
     }
     @SuppressWarnings("unchecked")
     public Expression(int clc)
     {
-        this();
+        this(false);
         fExpr.add(new OMF_Number(OMF_Expression.EXPR_REL, clc));
         
     }
@@ -47,9 +51,44 @@ public class Expression implements Cloneable
         return clone;
     
     }
-    
+    @SuppressWarnings("unchecked")
+    public OMF_Opcode toOpcode()
+    {
+        if (!fEof)
+        {
+            // add the EOF
+            fExpr.add(new Integer(OMF_Expression.EXPR_END));
+            fEof = true;
+        }
+        
+        switch(fEType)
+        {
+        case OMF.OMF_GEQU:
+        case OMF.OMF_EQU:
+            return new OMF_Equ(fEType, fEName, 0, 'N', false, fExpr);
+        case OMF.OMF_RELEXPR:
+            // TODO -- need to verify relexpressions
+            return new OMF_RelExpr(fSize, 1, fExpr);
+        case OMF.OMF_EXPR:
+        case OMF.OMF_LEXPR:
+        case OMF.OMF_BKEXPR:
+        case OMF.OMF_ZPEXPR:
+            return new OMF_Expr(fEType, fSize, fExpr);
+        case 0:
+            return new OMF_Expr(OMF.OMF_EXPR, fSize, fExpr);
+        }
+        return null;
+    }
+    /*
     public OMF_Opcode toOpcode(int opcode, String label)
     {
+        if (!fEof)
+        {
+            // add the EOF
+            fExpr.add(new Integer(OMF_Expression.EXPR_END));
+            fEof = true;
+        }
+        
         switch (opcode)
         {
         case OMF.OMF_GEQU:
@@ -58,7 +97,7 @@ public class Expression implements Cloneable
         }
         return null;
     }
-    
+    */
 
     @SuppressWarnings("unchecked")
     public void ParseExpression(Lexer_Orca lex) throws AsmException
@@ -179,6 +218,7 @@ public class Expression implements Cloneable
     {
         int c;
         Token t;
+        String s;
         boolean uminus = false;
         
         c = lex.Peek();
@@ -212,7 +252,10 @@ public class Expression implements Cloneable
                 fExpr.add(new OMF_Number(OMF_Expression.EXPR_ABS, t.Value()));
                 break;
             case Token.SYMBOL:
-                fExpr.add(new OMF_Label(OMF_Expression.EXPR_LABEL, t.toString()));
+                s = t.toString();
+                if (!fCase)
+                    s = s.toUpperCase();
+                fExpr.add(new OMF_Label(OMF_Expression.EXPR_LABEL, s));
                 break;
     
             }
@@ -399,6 +442,9 @@ public class Expression implements Cloneable
     @SuppressWarnings("unchecked")
     public boolean Reduce(HashMap<String, Expression> map, boolean absolute) throws AsmException
     {
+        // if it's a constant value, we're done.
+        if (Value() != null) return true;
+        
         if (fReducing) throw new AsmException(Error.E_EXPRESSION);
         fReducing = true;
         
@@ -577,20 +623,24 @@ public class Expression implements Cloneable
     @SuppressWarnings("unchecked")
     public Integer Value()
     {
-        
-        if (!fEof)
+        // this caches, which makes life faster.
+        if (fValue == null)
         {
-            // add the EOF
-            fExpr.add(new Integer(OMF_Expression.EXPR_END));
-            fEof = true;
+            if (!fEof)
+            {
+                // add the EOF
+                fExpr.add(new Integer(OMF_Expression.EXPR_END));
+                fEof = true;
+            }
+            if (fExpr.size() != 2) return null;
+            Object o = fExpr.get(0);
+            if (!(o instanceof OMF_Number)) return null;
+            OMF_Number n = (OMF_Number)o;
+            if (n.Opcode() != OMF_Expression.EXPR_ABS) return null;
+            
+            fValue = new Integer(n.Value());
         }
-        if (fExpr.size() != 2) return null;
-        Object o = fExpr.get(0);
-        if (!(o instanceof OMF_Number)) return null;
-        OMF_Number n = (OMF_Number)o;
-        if (n.Opcode() != OMF_Expression.EXPR_ABS) return null;
-        
-        return new Integer(n.Value());
+        return fValue;
     }
 
     public void SetPC(int pc)
@@ -636,7 +686,10 @@ public class Expression implements Cloneable
     private int fPC;
     private boolean fReducing;
     private int fEType;
-    private String fEName;private int fSize;
+    private String fEName;
+    private int fSize;
+    private Integer fValue;
+    private boolean fCase;
     
 
 }

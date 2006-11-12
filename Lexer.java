@@ -18,6 +18,10 @@ public abstract class Lexer
     protected Token fToken;
     protected Token fLast;
     protected boolean fMacro;
+    boolean fEof;
+    
+    protected Token Token_EOL;
+    protected Token Token_EOF;
     
     public Lexer(InputStream io)
     {
@@ -35,6 +39,9 @@ public abstract class Lexer
         fLine = 1;
         fToken = null;
         fLast = null;
+        fEof = false;
+        Token_EOF = new Token(Token.EOF);
+        Token_EOL = new Token(Token.EOL);
     }
     
     public int Line()
@@ -77,9 +84,24 @@ public abstract class Lexer
     public Token NextToken()
     {
         Token t;
-        t = fToken == null ? __NextToken() : fToken;
-        fToken = null;
+        if (fEof) return Token_EOF;
         
+        t = (fToken == null) ? __NextToken() : fToken;
+        fToken = null;
+        fLast = t;
+        
+        // return EOL prior to EOF.
+        if (t.Type() == Token.EOF)
+        {
+            fEof = true;
+            fToken = Token_EOF; // return it next time, too.
+            if (fLast == null || fLast.Type() != Token.EOL)
+            {
+                return Token_EOL;
+            }
+            return Token_EOF;
+        }
+        /*
         if (t.Type() == Token.EOL)
         {
             do
@@ -88,7 +110,8 @@ public abstract class Lexer
             }
             while (fToken.Type() == Token.EOL);
         }
-        fLast = t;
+        */
+
         return t;
     }    
 
@@ -113,10 +136,12 @@ public abstract class Lexer
 
         try
         {
+
             return fData.read();
-        } catch (IOException e)
+        }
+        catch (IOException e)
         {
-            return -1;
+            return EOF;
         }
 
     }
