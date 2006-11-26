@@ -86,7 +86,7 @@ public class GetOpt
        }
        
        // valid option.  check for :
-       if (loc < fOptions.length() && fOptions.charAt(loc + 1) == ':')
+       if ((loc + 1) < fOptions.length() && fOptions.charAt(loc + 1) == ':')
        {
            // if more data in this option, that's the arg.
            if (fOffset < fPlace.length())
