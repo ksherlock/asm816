@@ -6,4 +6,5 @@
         E_ALIGN,
         E_OPCODE,
         E_MACHINE,
+        E_LABEL_REQUIRED
         };

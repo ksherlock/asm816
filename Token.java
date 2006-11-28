@@ -8,28 +8,40 @@ public final class Token
     private int fType;
     private int fValue;
     private String fString;
+    private int fLine;
 
     public Token(int type)
     {
         fType = type;
         fValue = 0;
         fString = null;
+        fLine = 0;
     }
-    public Token(int type, String string)
+    public Token(int type, Lexer lex)
     {
         fType = type;
         fValue = 0;
+        fString = null;
+        fLine = lex.Line();
+    }
+    public Token(int type, String string, Lexer lex)
+    {
+        this(type, lex);
         fString = string;
     }
-    public Token(int type, int value)
+    public Token(int type, int value, Lexer lex)
     {
-        fType = type;
+        this(type, lex);
         fValue = value;
-        fString = null;
-    }   
+    }  
+    
     public String toString()
     {
         return fString;
+    }
+    public int Line()
+    {
+        return fLine;
     }
     public int Value()
     {
@@ -53,7 +65,7 @@ public final class Token
     
     public int Register()
     {
-        if (fType != STRING) return 0;
+        if (fType != SYMBOL) return 0;
         if (fString.length() != 1) return 0;
         int c = ctype.tolower(fString.charAt(0));
         if (c == 'a' || c == 'x' || c == 'y' || c == 's') return c;
@@ -102,6 +114,13 @@ public final class Token
     public static final int SYMBOL = 258;
     public static final int EOL = 259;
     public static final int STRING = 260;
-    public static final int MACRO_PARM = 261;
-    public static final int MACRO_LAB = 262;
+    // orca .AND. .EOR. .NOT. .OR.
+    public static final int AND = 261;
+    public static final int OR = 262;
+    public static final int NOT = 263;
+    public static final int EOR = 264;
+    
+    public static final int MACRO_PARM = 270;
+    public static final int MACRO_LAB = 271;
+    
 }

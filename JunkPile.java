@@ -26,6 +26,10 @@ public class JunkPile
         fTemp = new OMF_Data();
         fPC = 0;
     }
+    public int Size()
+    {
+        return fPC;
+    }
     
     public void add8(int data, int numsex)
     {

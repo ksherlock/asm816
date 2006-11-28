@@ -17,7 +17,7 @@ public class Lexer_Orca extends Lexer
     {
         super(s);
     }       
-    protected Token __NextToken()
+    protected Token __NextToken() throws AsmException
     {
         int c = NextChar();
         
@@ -58,6 +58,7 @@ public class Lexer_Orca extends Lexer
             Poke(c);
             SkipLine();
             return Token_EOL;
+                        
             
             /*
              * hexadecimal number.
@@ -77,7 +78,7 @@ public class Lexer_Orca extends Lexer
                 }
                 Poke(c);
                 // TODO -- throw error if i == 0
-                return new Token(Token.NUMBER, value);
+                return new Token(Token.NUMBER, value, this);
             }
             /*
              * octal number.
@@ -96,8 +97,11 @@ public class Lexer_Orca extends Lexer
                     c = NextChar();
                 }
                 Poke(c);
+                /*
+                 * 
+                 */
                 // TODO -- throw error if i == 0
-                return new Token(Token.NUMBER, value);
+                return new Token(Token.NUMBER, value, this);
             }
             
             /*
@@ -118,7 +122,7 @@ public class Lexer_Orca extends Lexer
                 }
                 Poke(c);
                 // TODO -- throw error if i == 0
-                return new Token(Token.NUMBER, value);
+                return new Token(Token.NUMBER, value, this);
             }
             /*
              * decimal number.
@@ -146,7 +150,7 @@ public class Lexer_Orca extends Lexer
                 }
                 Poke(c);
                 
-                return new Token(Token.NUMBER, value);
+                return new Token(Token.NUMBER, value, this);
             }
 
             /*
@@ -161,12 +165,13 @@ public class Lexer_Orca extends Lexer
                 while(true)
                 {
                     c = NextChar();
-                    if (c == EOF)
+
+                    if (c == EOF || c == '\r' || c == '\n')
                     {
-                        // TODO -- throw an error.
-                        return new Token(Token.EOF);
+                        Poke(c);
+                        throw new AsmException(Error.E_UNTERM_STRING, this);
                     }
-                    // TODO -- throw error if \r or \n.
+
                     // may be the end or it may be an escaped quote.
                     if (c == quote)
                     {
@@ -176,7 +181,7 @@ public class Lexer_Orca extends Lexer
                         }
                         else
                         {
-                            return new Token(Token.STRING, buff.toString());
+                            return new Token(Token.STRING, buff.toString(), this);
                         }
                     }
                     buff.append((char)c);                   
@@ -197,7 +202,7 @@ public class Lexer_Orca extends Lexer
                 }
                 Poke(c);
                 if (buff.length() > 0) 
-                    return new Token(Token.MACRO_PARM, buff.toString());
+                    return new Token(Token.MACRO_PARM, buff.toString(), this);
             }
             return new Token(c);
             
@@ -221,7 +226,7 @@ public class Lexer_Orca extends Lexer
 
                 Poke(c);
                 if (buff.length() > 0) 
-                    return new Token(Token.MACRO_LAB, buff.toString());                
+                    return new Token(Token.MACRO_LAB, buff.toString(), this);                
             }
             // TODO -- .NOT., etc.
             return new Token(c);
@@ -242,7 +247,7 @@ public class Lexer_Orca extends Lexer
                 while (ctype.isalnum(c) || c == '_' || c == '~');
                 
                 Poke(c);
-                return new Token(Token.SYMBOL, buff.toString());
+                return new Token(Token.SYMBOL, buff.toString(), this);
             } else
                 return new Token(c);      
         }   

@@ -51,15 +51,23 @@ public class Expression implements Cloneable
         return clone;
     
     }
+    
     @SuppressWarnings("unchecked")
-    public OMF_Opcode toOpcode()
+    private final void AddEof()
     {
         if (!fEof)
         {
             // add the EOF
             fExpr.add(new Integer(OMF_Expression.EXPR_END));
             fEof = true;
-        }
+        }  
+    }
+    
+    
+    @SuppressWarnings("unchecked")
+    public OMF_Opcode toOpcode()
+    {
+        AddEof();
         
         switch(fEType)
         {
@@ -450,12 +458,7 @@ public class Expression implements Cloneable
         
         boolean ret = false;
     
-        if (!fEof)
-        {
-            // add the EOF
-            fExpr.add(new Integer(OMF_Expression.EXPR_END));
-            fEof = true;
-        }
+        AddEof();
         
         
         // replace symbols with their values, if known.
@@ -464,8 +467,10 @@ public class Expression implements Cloneable
             Object o = fExpr.get(i);
             if (o instanceof OMF_Label)
             {
+                if (map == null) continue;
                 OMF_Label lab = (OMF_Label) o;
-                if ((lab.Opcode() == OMF_Expression.EXPR_LABEL) && (map != null))
+                
+                if (lab.Opcode() == OMF_Expression.EXPR_LABEL)
                 {
                     Expression op = map.get(lab.toString());
                     if (op != null)
@@ -480,7 +485,6 @@ public class Expression implements Cloneable
                             ret = true;
                         }
                     }
-    
                 }
             }
             else if (o instanceof OMF_Number)
@@ -516,7 +520,7 @@ public class Expression implements Cloneable
             if (o instanceof Integer)
             {
                 boolean ok = false;
-                OMF_Number n1, n2;
+                OMF_Number n1;
                 Object o1, o2;
                 Integer i = (Integer) o;
     
@@ -619,6 +623,21 @@ public class Expression implements Cloneable
         fReducing = false;
         return ret;
     }
+    
+    public String Label()
+    {
+        AddEof();      
+        
+        if (fExpr.size() != 2) return null;
+        
+        Object o = fExpr.get(0);
+        if (o instanceof OMF_Label)
+        {
+            return o.toString();
+        }
+        
+        return null;
+    }
 
     @SuppressWarnings("unchecked")
     public Integer Value()
@@ -626,12 +645,8 @@ public class Expression implements Cloneable
         // this caches, which makes life faster.
         if (fValue == null)
         {
-            if (!fEof)
-            {
-                // add the EOF
-                fExpr.add(new Integer(OMF_Expression.EXPR_END));
-                fEof = true;
-            }
+            AddEof();
+
             if (fExpr.size() != 2) return null;
             Object o = fExpr.get(0);
             if (!(o instanceof OMF_Number)) return null;

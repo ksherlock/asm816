@@ -12,7 +12,7 @@ import java.io.StringReader;
 public abstract class Lexer
 {
     private Reader fData;
-    private int fPeek;
+
     private int fLine;
     private int fColumn;
     protected Token fToken;
@@ -20,8 +20,11 @@ public abstract class Lexer
     protected boolean fMacro;
     boolean fEof;
     
-    protected Token Token_EOL;
-    protected Token Token_EOF;
+    int[] fPushBack;
+    int fPushPtr;
+    
+    protected static final Token Token_EOL = new Token(Token.EOL);
+    protected static final Token Token_EOF = new Token(Token.EOF);
     
     public Lexer(InputStream io)
     {
@@ -34,14 +37,14 @@ public abstract class Lexer
     public Lexer(Reader io)
     {
         fData = io;
-        fPeek = UNKNOWN;
         fColumn = 0;
         fLine = 1;
         fToken = null;
         fLast = null;
         fEof = false;
-        Token_EOF = new Token(Token.EOF);
-        Token_EOL = new Token(Token.EOL);
+        
+        fPushBack = new int[8];
+        fPushPtr = -1;
     }
     
     public int Line()
@@ -81,7 +84,7 @@ public abstract class Lexer
      * not sure if needed ... it definitely could make Peek() useless in some 
      * instances.
      */
-    public Token NextToken()
+    public Token NextToken() throws AsmException
     {
         Token t;
         if (fEof) return Token_EOF;
@@ -121,19 +124,21 @@ public abstract class Lexer
     public int NextChar()
     {
         int rv;
-        if (fPeek == EOF) return EOF;
+               
+        if (fPushPtr != -1)
+        {
+            rv = fPushBack[fPushPtr--];
+        }
+        else rv = __NextChar();
         
-        rv = (fPeek == UNKNOWN) ? __NextChar() : fPeek;
-        
-        fPeek = UNKNOWN;
         fColumn++;
-        
-        return rv;       
+        return rv;
     }
 
     private int __NextChar()
     {
-
+        if (fEof) return EOF;
+        
         try
         {
 
@@ -149,17 +154,19 @@ public abstract class Lexer
     
     public int Peek()
     {
-        if (fPeek == UNKNOWN)
-        {
-            fPeek = __NextChar();           
-        }
+        if (fPushPtr != -1)
+            return fPushBack[fPushPtr];
         
-        return fPeek;
+        int rv = fPushBack[++fPushPtr] = __NextChar();
+        return rv;
     }
     public void Poke(int c)
     {
-        fPeek = c;
-        fColumn--;
+        if (fPushPtr < 8)
+        {
+            fPushBack[++fPushPtr] = c;
+            fColumn--;
+        }
     }   
     
     // skip ahead past the end of the line
@@ -190,9 +197,8 @@ public abstract class Lexer
         fColumn = 0;
     }
     
-    abstract protected Token __NextToken();   
+    abstract protected Token __NextToken() throws AsmException;   
     
     protected static final int EOF = -1;
-    private static final int UNKNOWN = -2;
     
 }

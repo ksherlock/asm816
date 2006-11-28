@@ -73,7 +73,7 @@ public class Merlin_Lexer extends Lexer
                 }
                 Poke(c);
                 // TODO -- throw error if i == 0
-                return new Token(Token.NUMBER, value);
+                return new Token(Token.NUMBER, value, this);
             }
 
             
@@ -96,7 +96,7 @@ public class Merlin_Lexer extends Lexer
                 }
                 Poke(c);
                 // TODO -- throw error if i == 0
-                return new Token(Token.NUMBER, value);
+                return new Token(Token.NUMBER, value, this);
             }
             /*
              * decimal number.
@@ -124,7 +124,7 @@ public class Merlin_Lexer extends Lexer
                 }
                 Poke(c);
                 
-                return new Token(Token.NUMBER, value);
+                return new Token(Token.NUMBER, value, this);
             }
 
             
@@ -137,7 +137,7 @@ public class Merlin_Lexer extends Lexer
                 c = NextChar();
                 if (ctype.isdigit(c))
                 {
-                    return new Token(Token.MACRO_PARM, "]" + (char)c);
+                    return new Token(Token.MACRO_PARM, "]" + (char)c, this);
                 }
 
                 Poke(c);
@@ -164,7 +164,7 @@ public class Merlin_Lexer extends Lexer
                     // may be the end or it may be an escaped quote.
                     if (c == quote)
                     {
-                        return new Token(Token.STRING, buff.toString());
+                        return new Token(Token.STRING, buff.toString(), this);
                     }
                     if (quote == '"') c |= 0x80; // set the hi-bit
                     buff.append((char)c);                   
@@ -188,7 +188,7 @@ public class Merlin_Lexer extends Lexer
                 while (ctype.isalnum(c) || c == '_' || c == '~');
                 
                 Poke(c);
-                return new Token(Token.SYMBOL, buff.toString());
+                return new Token(Token.SYMBOL, buff.toString(), this);
             } else
                 return new Token(c);      
         }   
@@ -223,7 +223,7 @@ public class Merlin_Lexer extends Lexer
             // may be the end or it may be an escaped quote.
             if (c == delim)
             {
-               return new Token(Token.STRING, buff.toString());
+               return new Token(Token.STRING, buff.toString(), this);
             }
             if (delim < (int)'\'')
                 c |= 0x80;  // set the hi-bit
@@ -246,6 +246,6 @@ public class Merlin_Lexer extends Lexer
         }
         // todo -- error if i == 0?
         Poke(c);
-        return new Token(Token.NUMBER, value);
+        return new Token(Token.NUMBER, value, this);
     }
 }

@@ -32,6 +32,7 @@ public class Orca_Parser
     private boolean fMSB;
     
     private HashMap<String, Expression> fLocals;
+    private HashMap<String, Expression> fGlobals;
     
     private int fError;
     private FileOutputStream fFile;
@@ -44,6 +45,8 @@ public class Orca_Parser
         fLocals = null;
         fData = null;
 
+        fGlobals = new HashMap<String, Expression>();
+        
         fM = true;
         fX = true;
         fPC = 0;
@@ -62,6 +65,10 @@ public class Orca_Parser
         {
             fOpcodes.put(i.name(), i);
         }
+        // synonyms
+        fOpcodes.put("BLT", INSTR.BCC);
+        fOpcodes.put("BGE", INSTR.BCS);
+        fOpcodes.put("CPA", INSTR.CMP);
 
         for(Directive d: Directive.values())
         {
@@ -69,16 +76,7 @@ public class Orca_Parser
         }
 
         fError = 0;
-        /*
-        try
-        {
-            File f = File.createTempFile("asm65816", ".tmp");
-            
-            fFile = new FileOutputStream(f);
-        }
-        catch (Exception e)
-        {}
-        */
+
     }
 
     public void Parse(Lexer_Orca lex)
@@ -116,6 +114,9 @@ public class Orca_Parser
                     break;
                 case Token.SYMBOL:
                     lab = t.toString();
+                    if (!fCase)
+                        lab = lab.toUpperCase();
+                    
                     lex.Expect(Token.SPACE);
                     break;
                 default:
@@ -129,121 +130,16 @@ public class Orca_Parser
                 if (dir == null)
                     throw new AsmException(Error.E_UNEXPECTED, t);
  
-                switch (dir) {
-                case START:
-                case DATA:
-                case PRIVATE:
-                case PRIVDATA:
-                    {
-                        t = lex.NextToken();
-                        if (t.Type() == Token.EOL)
-                            s = null;
-                        else
-                        {
-                            t = lex.Expect(Token.SYMBOL);
-                            s = t.toString();
-                            t.Expect(Token.EOL);
-                        }
-                        
-                        int attr = 0;
-                        int type = 0;
-                        switch (dir) {
-                        case PRIVATE:
-                            type = OMF.KIND_PRIVATE;
-                        case START:
-                            type = OMF.KIND_CODE;
-                            break;
-                        case PRIVDATA:
-                            type = OMF.KIND_PRIVATE;
-                        case DATA:
-                            type = OMF.KIND_DATA;
-                            break;
-                        }
-                        if (!fCase)
-                        {
-                            if (s != null) s = s.toUpperCase();
-                            lab = lab.toUpperCase();
-                        }
-                        fSegment = new OMF_Segment();
-                        fSegment.SetSegmentName(lab);
-                        if (s != null)
-                            fSegment.SetLoadName(s);
-                        fSegment.SetKind(type);
-                        fSegment.SetAttributes(attr);
-                        fSegment.SetAlignment(fAlign);
-
-                        ParseSegment(lex, type == OMF.KIND_DATA);
-                    }
-                    break;
+                boolean tf = ParseDirective(lab, lex, dir);
+                if (!tf)
+                    throw new AsmException(Error.E_UNEXPECTED, t);
                 
-                case ALIGN:
-                    {
-                        lex.Expect(Token.SPACE);
-                        Expression e = new Expression(fCase);
-                        e.ParseExpression(lex);
-                        lex.Expect(Token.EOL);
-                        e.Reduce(null, false);
-                        Integer v = e.Value();
-                        if (v == null)
-                            throw new AsmException(Error.E_EXPRESSION);
-                        
-                        // must be a power of 2.
-                        int i = v.intValue();
-                        while ((i  & 0x01) == 0)
-                        {
-                            i = i >> 1;
-                        }
-                        if (i != 1)
-                        {
-                            throw new AsmException(Error.E_ALIGN);
-                        }
-                        fAlign = v.intValue();
-                        
-                    }
-                    break;
-                case CASE:
-                    fCase = ParseOnOff(lex);
-                    break;
-                case M6502:
-                    fMachine = INSTR.m6502;
-                    fM = false;
-                    fX = false;
-                    lex.Expect(Token.EOL);
-                    break;
-                case M65C02:
-                    fMachine = INSTR.m65c02;
-                    fM = false;
-                    fX = false;
-                    lex.Expect(Token.EOL);
-                    break;
-                case M65816:
-                    fMachine = INSTR.m65816;
-                    fM = true;
-                    fX = true;
-                    lex.Expect(Token.EOL);
-                    break;
-                case RENAME:
-                {
-                    String sold, snew;
-                    lex.Expect(Token.SPACE);
-                    t = lex.Expect(Token.SYMBOL);
-                    sold = t.toString();
-                    lex.Expect(',');
-                    t = lex.Expect(Token.SYMBOL);
-                    snew = t.toString();
-                    lex.Expect(Token.EOL);
-                    //TODO -- check if new/old are valid?
-                    INSTR instr = fOpcodes.remove(sold);
-                    fOpcodes.put(snew, instr);
-                }
-                default:
-                    // unexpected/unsupported
-                }
-
             }
             catch (AsmException e)
             {
-
+                // TODO -- check if fatal, update error count.
+                e.print(System.err);
+                lex.SkipLine();
             }
 
         }
@@ -262,6 +158,8 @@ public class Orca_Parser
 
         fLocals = new HashMap<String, Expression>();
 
+        fLocals.putAll(fGlobals);
+        
         fData = new JunkPile();
 
        
@@ -291,6 +189,7 @@ public class Orca_Parser
         
         Reduce();
         
+        fLocals = null;
  
         
     }
@@ -317,7 +216,7 @@ public class Orca_Parser
                    // reduce
                     try
                     {
-                        e.Reduce(fLocals, false);
+                        e.Reduce(fLocals, true);
                     }
                     catch (AsmException err)
                     {
@@ -389,17 +288,16 @@ public class Orca_Parser
         String lab = null;
         String s = null;
 
-        Token t = lex.NextToken();
-
-        if (t.Type() == Token.EOL)
-            return true;
-
-        int pc = fPC;
-        Expression e = null;
-
         try
         {
 
+            fPC = fData.Size();
+            
+            Token t = lex.NextToken();
+
+            if (t.Type() == Token.EOL)
+                return true;  
+            
             if (t.Type() == Token.SYMBOL)
             {
                 lab = t.toString();
@@ -416,206 +314,467 @@ public class Orca_Parser
             Directive dir = fDirectives.get(s);
             if (dir != null)
             {
-                e = null;
-                switch (dir)
-                {
-                case ANOP:
-                    lex.Expect(Token.EOL);
-                    break;
-                case KIND:
-                    {
-                        lex.Expect(Token.SPACE);
-                        e = new Expression(fCase);
-                        e.ParseExpression(lex);
-                        lex.Expect(Token.EOL);
-                        e.Reduce(null, false);
-                        Integer v = e.Value();
-                        if (v == null)
-                            throw new AsmException(Error.E_EXPRESSION);
-                        int i = v.intValue();
-                        fSegment.SetKind(i);
-                        fSegment.SetAttributes(i);
-                    }
-                    break;
-
-                case EQU:
-                case GEQU:
-                    // TODO -- store gequ value in global array?
-                    // TODO -- only store equ to disk if data segment?
-                    
-                    lex.Expect(Token.SPACE);
-                    e = new Expression(fCase);
-                    e.ParseExpression(lex);
-                    e.SetPC(fPC);
-                    lex.Expect(Token.EOL);
-                    
-                    /*
-                     * TODO -- equ only stored if in a datasegment.
-                     */
-                    if (lab != null)
-                    {
-                        e.Reduce(null, false);
-                        e.SetExpressionName(lab);
-                        e.SetExpressionType(dir == Directive.EQU ?
-                                OMF.OMF_EQU : OMF.OMF_GEQU);
-                        
-                        fData.add(e.toOpcode());
-                        fData.add(e);                        
-                    }
-                    break;
-
-                case ENTRY:
-                    // create an OMF_Global record...
-                    if (lab != null)
-                    {
-                        fData.add(new OMF_Local(OMF.OMF_GLOBAL, lab, 0, 'N',
-                                false));
-
-                    }
-                    lex.Expect(Token.EOL);
-                    break;
-                /*
-                 * DS size size should be a number, equ, or gequ. since it
-                 * affects the pc, it must already be defined.
-                 */
-                case DS:
-                    {
-                        Expression ex;
-                        lex.Expect(Token.SPACE);
-                        ex = new Expression(fCase);
-                        ex.ParseExpression(lex);
-                        lex.Expect(Token.EOL);
-                        ex.SetPC(pc);
-                        ex.Reduce(fLocals, true);
-                        Integer v = ex.Value();
-                        if (v == null)
-                        {
-                            throw new AsmException(Error.E_EXPRESSION, t);
-                        }
-                        int n = v.intValue();
-                        fData.add(new OMF_DS(n));
-                        fPC += n;
-                    }
-                    break;
-                case DC:
-                    ParseData(lex);
-                    break;
-                case LONGA:
-                    if (fMachine != INSTR.m65816)
-                    {
-                        throw new AsmException(Error.E_MACHINE, t);
-                    }
-                    fM = ParseOnOff(lex);
-                    break;
-
-                case LONGI:
-                    fX = ParseOnOff(lex);
-                    break;
-                case MSB:
-                    fMSB = ParseOnOff(lex);
-                    break;
-                case END:
-                    {
-                        if (lab != null)
-                            fLocals.put(lab, new Expression(pc));
-
-                        return false;
-                    }
-                }// switch
-
-                if (lab != null)
-                {
-                    if (e == null)
-                        e = new Expression(pc);
-                    fLocals.put(lab, e);
-                }
-
+                boolean tf = ParseDirective(lab, lex, dir);
+                if (!tf)
+                    throw new AsmException(Error.E_UNEXPECTED, t);
+                if (dir == Directive.END) return false; // all done.
+                
                 return true;
-            } // end directive
+            }
+                
 
             INSTR instr = fOpcodes.get(s);
             if (instr != null)
             {
-                int opcode = 0x00;
-                int size;
-
-                // special case mvn/mvp
-                switch (instr)
-                {
-                case MVN:
-                case MVP:
-                    Expression e1,
-                    e2;
-                    lex.Expect(Token.SPACE);
-                    e1 = new Expression(fCase);
-                    e2 = new Expression(fCase);
-                    e1.ParseExpression(lex);
-                    lex.Expect((int) ',');
-                    e2.ParseExpression(lex);
-                    e1.SetPC(fPC);
-                    e2.SetPC(fPC);
-                    switch (instr)
-                    {
-                    case MVN:
-                        opcode = 0x54;
-                        break;
-                    case MVP:
-                        opcode = 0x44;
-                        break;
-                    }
-                    fData.add(new byte[] { (byte) opcode });
-                    e1.SetSize(1);
-                    e2.SetSize(1);
-                    fData.add(e1);
-                    fData.add(e2);
-
-                    fPC += 3;
-                    break;
-                default:
-                    Operand op = ParseOperand(lex);
-                    op.SetPC(fPC);
-                    opcode = instr.opcode(op, fMachine);
-                    if (opcode == -1)
-                    {
-                        throw new AsmException(Error.E_OPCODE, t);
-                    }
-                    size = INSTR.Size(opcode, fM, fX);
-
-                    fData.add(new byte[] { (byte) opcode });
-                    if (size > 1)
-                    {
-                        op.SetSize(size - 1);
-                        //TODO -- set type.
-                        if (INSTR.isBranch(opcode))
-                            op.SetExpressionType(OMF.OMF_RELEXPR);
-                        
-                        fData.add(op);
-                    }
-                    fPC += size;
-                }
-                if (lab != null)
-                {
-                    if (e == null)
-                        e = new Expression(pc);
-                    fLocals.put(lab, e);
-                }
+                ParseInstruction(lab, lex, instr);
+                
+                return true;
             }
+            
+            // TODO -- macro support.
+            
+            throw new AsmException(Error.E_UNEXPECTED, t);
 
         }
         catch (AsmException Error)
         {
             // skip to the next line.
-            t = lex.LastToken();
-            int type = t.Type();
-            while (type != Token.EOL && type != Token.EOF)
-            {
-                t = lex.NextToken();
-                type = t.Type();
-            }
+            Error.print(System.err);
+            lex.SkipLine();
         }
 
         return true;
     }
+    
+    /*
+     * 
+     * lab is the label, or null.
+     * lex is the lexer
+     * d is the directive
+     * 
+     * returns false if the directive is invalid for this segment type. 
+     */
+    private boolean ParseDirective(String lab, Lexer_Orca lex, Directive d) throws AsmException
+    {
+        Expression e = null;
+        int segkind = -1;
+        boolean inSeg = false;
+        
+        //private HashMap<String, Expression> map;
+        //map = segkind == -1 ? fGlobals : fLocals;
+        
+
+        if (fSegment != null)
+        {
+            inSeg = true;
+            segkind = fSegment.Kind();            
+        }
+        
+        switch(d)
+        {
+        case START:
+        case DATA:
+        case PRIVATE:
+        case PRIVDATA:
+            
+            if (inSeg)
+                return false;
+            {
+                Token t;
+                String s;
+                // need to check for a possible loadname.
+                t = lex.Expect(Token.EOL, Token.SPACE);
+                if (t.Type() == Token.EOL)
+                    s = null;
+                else
+                {
+                    t = lex.Expect(Token.SYMBOL);
+                    s = t.toString();
+                    t.Expect(Token.EOL);
+                }
+                
+                int attr = 0;
+                int type = 0;
+
+                switch (d) {
+                case PRIVATE:
+                    attr = OMF.KIND_PRIVATE;
+                case START:
+                    type = OMF.KIND_CODE;
+                    break;
+                case PRIVDATA:
+                    attr = OMF.KIND_PRIVATE;
+                case DATA:
+                    type = OMF.KIND_DATA;
+                    break;
+                }
+                
+                if (!fCase && s != null)
+                {
+                    s = s.toUpperCase();
+                }               
+ 
+                fSegment = new OMF_Segment();
+                fSegment.SetSegmentName(lab);
+                if (s != null)
+                    fSegment.SetLoadName(s);
+                fSegment.SetKind(type);
+                fSegment.SetAttributes(attr);
+                fSegment.SetAlignment(fAlign);
+
+                ParseSegment(lex, type == OMF.KIND_DATA);
+                fSegment = null;
+                fAlign = 0;                
+                
+                // prevent double dipping.
+                lab = null;
+            }
+            break;
+        
+        
+        case ALIGN:
+            /*
+             * The ALIGN directive has two distinct uses, depending on where in the 
+             * program the directive occurs. If it appears before a START, PRIVATE, 
+             * DATA or PRIVDATA directive, it tells the link editor to align the 
+             * segment to a byte boundary divisible by the absolute number in the 
+             * operand of the ALIGN directive. This number must be a power of two.
+             * 
+             * Within a segment, ALIGN inserts enough zeros to force the next byte 
+             * to fall at the indicated alignment. This is done at assembly time, 
+             * so the zeros show up in the program listing. If align is used in a 
+             * subroutine, it must also have been used before the segment, and the 
+             * internal align must be to a boundary that is less than or equal to 
+             * the external align. 
+             */
+            {
+                lex.Expect(Token.SPACE);
+                e = new Expression(fCase);
+                e.ParseExpression(lex);
+                lex.Expect(Token.EOL);
+                e.Reduce(inSeg ? fLocals : fGlobals, false);
+
+                Integer v = e.Value();
+                if (v == null)
+                    throw new AsmException(Error.E_EXPRESSION, lex);
+               
+                // must be a power of 2
+                int i = v.intValue();
+                while ((i & 0x01) == 0)
+                {
+                    i = i >> 1;
+                }
+                if (i != 1)
+                {
+                    throw new AsmException(Error.E_ALIGN, lex);
+                }
+                if (inSeg)
+                {
+                    // TODO -- verify if this does an ALIGN record
+                    // or a DS record.
+                    // align must be <= segment align.
+                    if (v > fAlign)
+                        throw new AsmException(Error.E_ALIGN, lex);
+                    
+                    // insert a DS record
+                    int newpc = (fPC + v) & ~(v - 1);
+                    if (newpc > fPC)
+                        fData.add(new OMF_DS(newpc - fPC));
+                }
+                else
+                {
+                    fAlign = v;
+                }
+            }
+            break;
+        
+        case ANOP:
+            if (!inSeg) return false;
+            lex.Expect(Token.EOL);
+            break;
+        
+        case CASE:
+            fCase = ParseOnOff(lex);
+            break;
+            
+        case DC:
+            if (!inSeg) return false;
+            ParseData(lex);
+            break;
+            
+        case DS:
+            {
+                if (!inSeg) return false;
+                lex.Expect(Token.SPACE);
+
+                lex.Expect(Token.SPACE);
+                e = new Expression(fCase);
+                e.ParseExpression(lex);
+                lex.Expect(Token.EOL);
+                e.SetPC(fPC);
+                e.Reduce(fLocals, true);
+                Integer v = e.Value();
+                if (v == null)
+                {
+                    throw new AsmException(Error.E_EXPRESSION);
+                }
+                int n = v.intValue();
+                fData.add(new OMF_DS(n));
+                               
+                e = null; // reset for below.
+            }
+            break;
+            
+        case END:
+            if (!inSeg) return false;
+            break;
+            
+        case ENTRY:
+            /*
+             * create an OMF_GLOBAL record 
+             */
+            if (!inSeg) return false;
+            
+            lex.Expect(Token.EOL);
+            if (lab != null)
+            {
+                fData.add(new OMF_Local(OMF.OMF_GLOBAL, lab, 0, 'N',
+                        false));
+            }
+            break;
+        
+        case EQU:
+            if (!inSeg) return false;
+        case GEQU:
+            {
+                lex.Expect(Token.SPACE);
+                e = new Expression(fCase);
+                e.ParseExpression(lex);
+                lex.Expect(Token.EOL);
+                   
+                if (!inSeg)
+                {
+                    // must be reducable.
+                    e.Reduce(fGlobals, false);
+                    if (e.Value() == null)
+                       throw new AsmException(Error.E_EXPRESSION);
+                    
+                    if (lab != null)
+                        fGlobals.put(lab, e);   
+                }
+                else
+                {
+                   e.SetPC(fPC);
+                   if (lab != null)
+                   {
+                       e.SetExpressionName(lab);
+                       e.SetExpressionType(d == Directive.EQU ? 
+                               OMF.OMF_EQU : OMF.OMF_GEQU);
+                       
+                       fLocals.put(lab, e);
+                       // in a segment, GEQU is always written to disk.
+                       // EQU is only written in a data segment.
+                       if (segkind == OMF.KIND_DATA || d == Directive.GEQU)
+                       {
+                           e.Reduce(fGlobals, false);
+                           fData.add(e.toOpcode());
+                       }
+                   }
+                }
+                // prevent double dipping.
+                lab = null;
+            }
+            break;
+            
+            
+            
+        case KIND:
+            {
+                if (!inSeg) return false;
+                
+                lex.Expect(Token.SPACE);
+                e = new Expression(fCase);
+                e.ParseExpression(lex);
+                lex.Expect(Token.EOL);
+                e.Reduce(fLocals, false);
+                Integer v = e.Value();
+                if (v == null)
+                    throw new AsmException(Error.E_EXPRESSION);
+                int i = v.intValue();
+
+                fSegment.SetKind(i);
+                fSegment.SetAttributes(i);
+                lab = null;
+            }
+            break;
+            
+        case LONGA:
+            if (fMachine != INSTR.m65816)
+                throw new AsmException(Error.E_MACHINE);
+            fM = ParseOnOff(lex);
+            break;
+
+        case LONGI:
+            if (fMachine != INSTR.m65816)
+                throw new AsmException(Error.E_MACHINE);
+            fX = ParseOnOff(lex);
+            break;
+            
+        case MSB:
+            fMSB = ParseOnOff(lex);
+            break;            
+            
+            
+        case M6502:
+            if (inSeg) return false;
+            fMachine = INSTR.m6502;
+            fM = false;
+            fX = false;
+            lex.Expect(Token.EOL);
+            break;
+            
+        case M65C02:
+            if (inSeg) return false;
+            fMachine = INSTR.m65c02;
+            fM = false;
+            fX = false;
+            lex.Expect(Token.EOL);
+            break;
+            
+        case M65816:
+            if (inSeg) return false;
+            fMachine = INSTR.m65816;
+            fM = true;
+            fX = true;
+            lex.Expect(Token.EOL);
+            break;
+            
+            
+        case RENAME:
+            if (inSeg) return false;
+            {
+                String sold, snew;
+                Token t;
+                lex.Expect(Token.SPACE);
+                t = lex.Expect(Token.SYMBOL);
+                sold = t.toString();
+                lex.Expect(',');
+                t = lex.Expect(Token.SYMBOL);
+                snew = t.toString();
+                lex.Expect(Token.EOL);
+                //TODO -- check if new/old are valid?
+                INSTR instr = fOpcodes.remove(sold);
+                fOpcodes.put(snew, instr);
+            }
+            break;
+              
+        /*
+         * unsupported
+         */    
+            
+        default: return false;
+        }
+        
+        if (inSeg && lab != null)
+        {
+            if (e == null) e = new Expression(fPC);
+            fLocals.put(lab, e);
+        }
+        
+        return true;
+    }
+ 
+    private boolean ParseInstruction(String lab, Lexer_Orca lex, INSTR instr) throws AsmException
+    {
+        int opcode = 0x00;
+        int size;
+
+        boolean check_a = false;
+        
+        // special case mvn/mvp
+        switch (instr)
+        {
+        case MVN:
+        case MVP:
+            Expression e1,
+            e2;
+            lex.Expect(Token.SPACE);
+            e1 = new Expression(fCase);
+            e2 = new Expression(fCase);
+            e1.ParseExpression(lex);
+            lex.Expect((int) ',');
+            e2.ParseExpression(lex);
+            e1.SetPC(fPC);
+            e2.SetPC(fPC);
+            switch (instr)
+            {
+            case MVN:
+                opcode = 0x54;
+                break;
+            case MVP:
+                opcode = 0x44;
+                break;
+            }
+            fData.add8(opcode, 0);
+            e1.SetSize(1);
+            e2.SetSize(1);
+            fData.add(e1);
+            fData.add(e2);
+            
+            break;
+            
+            /*
+             *TODO -- perhaps these should be macros ?
+             * special case -- a --> implied
+             */
+        case ASL:
+        case DEC:
+        case INC:
+        case LSR:
+        case ROL:
+        case ROR:
+            check_a = true;
+            
+        default:
+            Operand op = ParseOperand(lex);
+            op.SetPC(fPC);
+            
+            if (check_a)
+            {
+                String oplab = op.Label();
+                if (oplab != null && oplab.compareToIgnoreCase("a") == 0)
+                    op.SetType(AddressMode.IMPLIED);
+            }
+            
+            opcode = instr.opcode(op, fMachine);
+            if (opcode == -1)
+            {
+                throw new AsmException(Error.E_OPCODE);
+            }
+            size = INSTR.Size(opcode, fM, fX);
+
+            fData.add8(opcode, 0);
+            if (size > 1)
+            {
+                op.SetSize(size - 1);
+                //TODO -- set type.
+                if (INSTR.isBranch(opcode))
+                    op.SetExpressionType(OMF.OMF_RELEXPR);
+                
+                fData.add(op);
+            }
+
+        } /* switch (instr) */
+        
+        if (lab != null)
+        {
+            fLocals.put(lab, new Expression(fPC));
+        }
+        
+        return true;
+    }
+    
+    
     /*
      * expect: EOL <implicit on> SPACE ON EOL <explicit on> SPACE OFF EOL
      * <explicit off>
@@ -868,8 +1027,13 @@ public class Orca_Parser
             // TODO -- reduce, convert to dp/abslong ???
             // or mark as possibly unknown??
             op = new Operand(AddressMode.ABS, fCase);
+        
+            // TODO lsr a, etc are actually implied mode. 
+        
+        
             op.ParseExpression(lex);
             // check for ,x,y
+            // ,s --> stack relative (ie, dp)
             c = lex.Peek();
             if (c == ',')
             {
