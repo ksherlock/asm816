@@ -22,6 +22,46 @@ public class Orca_DC
     }
     
     /*
+     * float-number [, float-number]
+     * 
+     * signed float point number with optional signed exponent preceeded by E
+     * 
+     * [+ -] (number | .number | number . number)  [E number]
+     * stored as 4-byte floating point, 
+     * bit 31: signed flag (1 for negative)
+     * bit 23-30: exponent (power of 2) + $7f
+     * bit 0-22: mantissa
+     */
+    public static Object DC_F(String s)
+    {
+        /*
+        Lexer_Orca lex = new Lexer_Orca(s); 
+        
+        boolean neg;
+        int exp;
+        int mant;
+        Token t;
+        int c;
+        
+        for(;;)
+        {
+            neg = false;
+            exp = 0;
+            mant = 0;
+            
+            c = lex.Peek();
+            if (c == '-' || c == '+')
+            {
+                neg = (c == '-');
+                lex.NextChar();
+                c = lex.Peek();
+            } 
+        }
+        */
+        return null;
+    }
+    
+    /*
      * character constant.
      * return the string data as is, but may set MSB.
      */
@@ -31,9 +71,9 @@ public class Orca_DC
         if (MSB)
         {
             int i;
-            int l = s.length();
+            int length = s.length();
             StringBuffer s2 = new StringBuffer(s);
-            for (i = 0; i < s.length(); i++)
+            for (i = 0; i < length; i++)
             {
                 char c = s.charAt(i);
                 s2.setCharAt(i, (char)(c | 0x80));
