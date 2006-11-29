@@ -1,6 +1,8 @@
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 
 import omf.*;
@@ -78,7 +80,22 @@ public class Orca_Parser
         fError = 0;
 
     }
-
+    private void ParseFile(String filename)
+    {
+        // TODO -- check -I directories for the file
+        File f = new File(filename);
+        try
+        {
+            FileInputStream stream = new FileInputStream(f);
+            Lexer_Orca lex = new Lexer_Orca(stream);
+            Parse(lex);
+        }
+        catch (FileNotFoundException e)
+        {
+            System.err.print("Unable to open file " + filename);
+        }
+    }
+    
     public void Parse(Lexer_Orca lex)
     {
         Token t;
@@ -216,7 +233,7 @@ public class Orca_Parser
                    // reduce
                     try
                     {
-                        e.Reduce(fLocals, true);
+                        e.Reduce(fLocals, false);
                     }
                     catch (AsmException err)
                     {
@@ -360,6 +377,8 @@ public class Orca_Parser
         int segkind = -1;
         boolean inSeg = false;
         
+        int pc = fPC;
+        
         //private HashMap<String, Expression> map;
         //map = segkind == -1 ? fGlobals : fLocals;
         
@@ -470,8 +489,7 @@ public class Orca_Parser
                 }
                 if (inSeg)
                 {
-                    // TODO -- verify if this does an ALIGN record
-                    // or a DS record.
+                    // ORCA/M uses a DS record rather than an OMF_ALIGN record.
                     // align must be <= segment align.
                     if (v > fAlign)
                         throw new AsmException(Error.E_ALIGN, lex);
@@ -494,7 +512,19 @@ public class Orca_Parser
             break;
         
         case CASE:
-            fCase = ParseOnOff(lex);
+            fCase = ParseOnOff(lex, false);
+            break;
+            
+        case COPY:
+            {
+                Token t;
+                String name;
+                lex.Expect(Token.SPACE);
+                t = lex.Expect(Token.STRING);
+                lex.Expect(Token.EOL);
+                name = t.toString();
+                this.ParseFile(name);
+            }
             break;
             
         case DC:
@@ -611,17 +641,17 @@ public class Orca_Parser
         case LONGA:
             if (fMachine != INSTR.m65816)
                 throw new AsmException(Error.E_MACHINE);
-            fM = ParseOnOff(lex);
+            fM = ParseOnOff(lex, true);
             break;
 
         case LONGI:
             if (fMachine != INSTR.m65816)
                 throw new AsmException(Error.E_MACHINE);
-            fX = ParseOnOff(lex);
+            fX = ParseOnOff(lex, true);
             break;
             
         case MSB:
-            fMSB = ParseOnOff(lex);
+            fMSB = ParseOnOff(lex, false);
             break;            
             
             
@@ -649,6 +679,20 @@ public class Orca_Parser
             lex.Expect(Token.EOL);
             break;
             
+        case USING:
+            if (!inSeg) return false;
+            {
+                Token t;
+                String s;
+                lex.Expect(Token.SPACE);
+                t = lex.Expect(Token.SYMBOL);
+                lex.Expect(Token.EOL);
+                
+                s = t.toString();
+                if (!fCase) s = s.toUpperCase();
+                fData.add(new OMF_Using(s));
+            }
+            break;
             
         case RENAME:
             if (inSeg) return false;
@@ -677,7 +721,7 @@ public class Orca_Parser
         
         if (inSeg && lab != null)
         {
-            if (e == null) e = new Expression(fPC);
+            if (e == null) e = new Expression(pc);
             fLocals.put(lab, e);
         }
         
@@ -779,14 +823,14 @@ public class Orca_Parser
      * expect: EOL <implicit on> SPACE ON EOL <explicit on> SPACE OFF EOL
      * <explicit off>
      */
-    private boolean ParseOnOff(Lexer_Orca lex) throws AsmException
+    private boolean ParseOnOff(Lexer_Orca lex, boolean blank) throws AsmException
     {
         Token t;
 
         t = lex.NextToken();
 
         if (t.Type() == Token.EOL)
-            return true;
+            return blank;
 
         t.Expect(Token.SPACE);
         t = lex.Expect(Token.SYMBOL);
@@ -1028,8 +1072,12 @@ public class Orca_Parser
             // or mark as possibly unknown??
             op = new Operand(AddressMode.ABS, fCase);
         
-            // TODO lsr a, etc are actually implied mode. 
-        
+            /* TODO -- if the operand is a known value, set to DP or long as appropriate
+            * eg: 
+            * blah equ $e12000
+            *      lda blah
+            * should be handled as lda >blah
+            */ 
         
             op.ParseExpression(lex);
             // check for ,x,y
