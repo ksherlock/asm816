@@ -476,7 +476,12 @@ public class Expression implements Cloneable
                     if (op != null)
                     {
                         // TODO -- add cyclical dependency check.
-                        op.Reduce(map, absolute);
+                        /*
+                         * if this is a relative expression (ie, beq target)
+                         * then we want to reduce to an actual number.  Otherwise,
+                         * the linker will handle it.
+                         */
+                        op.Reduce(map, /*absolute */ this.fEType == OMF.OMF_RELEXPR);
                         Integer v = op.Value();
                         if (v != null)
                         {
