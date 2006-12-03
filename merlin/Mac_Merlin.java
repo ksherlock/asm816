@@ -1,3 +1,4 @@
+package merlin;
 import java.util.ArrayList;
 
 /*

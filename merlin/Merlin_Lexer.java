@@ -1,4 +1,9 @@
+package merlin;
 import java.io.InputStream;
+
+import asm816.Lexer;
+import asm816.Token;
+import asm816.ctype;
 
 /*
  * Created on Nov 8, 2006

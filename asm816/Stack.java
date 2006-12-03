@@ -1,3 +1,4 @@
+package asm816;
 import java.util.ArrayList;
 
 /*
@@ -5,7 +6,7 @@ import java.util.ArrayList;
  * Feb 7, 2006 1:25:45 AM
  */
 
-class Stack<E> extends ArrayList<E>
+public class Stack<E> extends ArrayList<E>
 {
     private static final long serialVersionUID = 1L;
     

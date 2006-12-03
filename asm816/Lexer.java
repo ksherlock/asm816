@@ -1,3 +1,4 @@
+package asm816;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -19,6 +20,7 @@ public abstract class Lexer
     protected Token fLast;
     protected boolean fMacro;
     boolean fEof;
+    protected boolean fCase;
     
     int[] fPushBack;
     int fPushPtr;
@@ -42,9 +44,15 @@ public abstract class Lexer
         fToken = null;
         fLast = null;
         fEof = false;
+        fCase = false;
         
         fPushBack = new int[8];
         fPushPtr = -1;
+    }
+    
+    public void SetCase(boolean tf)
+    {
+        fCase = tf;
     }
     
     public int Line()

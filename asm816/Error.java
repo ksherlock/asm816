@@ -1,3 +1,4 @@
+package asm816;
     public enum Error {
         E_UNTERM_STRING,
         E_UNEXPECTED,

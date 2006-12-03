@@ -1,3 +1,4 @@
+package asm816;
 /*
  * Created on Mar 13, 2006
  * Mar 13, 2006 11:19:10 PM
@@ -107,10 +108,10 @@ public enum INSTR
     public static final int mBranch = 0x200;
     
     
-   public int opcode(Operand op, int machine)
+   public int opcode(AddressMode mode, int machine)
     {     
        short[] tmp = __opcodes[this.ordinal()];
-       int index = op.Type().ordinal();
+       int index = mode.ordinal();
        if (index >= tmp.length) return -1;
        
        int opcode = tmp[index];

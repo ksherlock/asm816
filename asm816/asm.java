@@ -1,9 +1,15 @@
+package asm816;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.util.ArrayList;
 import java.util.HashMap;
+
+import orca.Orca_Lexer;
+import orca.Orca_Parser;
+
+import mpw.MPW_Parser;
 
 /*
  * Created on Mar 15, 2006
@@ -72,7 +78,7 @@ public class asm
             {
                 FileOutputStream fout = new FileOutputStream(outf);
                 Orca_Parser p = new Orca_Parser(fout);
-                Lexer_Orca lex = new Lexer_Orca(System.in);
+                Orca_Lexer lex = new Orca_Lexer(System.in);
                 p.Parse(lex);
             }
             catch (FileNotFoundException e)
@@ -105,10 +111,13 @@ public class asm
                         }
                         fout = new FileOutputStream(name);
                     }
-                    
-                    Lexer_Orca lex = new Lexer_Orca(fin);
+                    MPW_Parser p = new MPW_Parser();
+                    p.ParseFile(new File(args[i]));
+                    /*
+                    Orca_Lexer lex = new Orca_Lexer(fin);
                     Orca_Parser p = new Orca_Parser(fout);
                     p.Parse(lex);
+                    */
                 }
                 catch (FileNotFoundException e)
                 {

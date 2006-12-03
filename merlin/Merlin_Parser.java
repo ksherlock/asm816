@@ -1,7 +1,15 @@
+package merlin;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.util.ArrayList;
 import java.util.HashMap;
+
+import asm816.AsmException;
+import asm816.Error;
+import asm816.INSTR;
+import asm816.JunkPile;
+import asm816.Token;
+import asm816.ctype;
 
 /*
  * Created on Nov 9, 2006

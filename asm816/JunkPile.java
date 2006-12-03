@@ -1,3 +1,4 @@
+package asm816;
 import java.util.ArrayList;
 
 import omf.OMF_Const;
@@ -124,8 +125,10 @@ public class JunkPile
         fPC += data.CodeSize();
     }
     
+
+    
     @SuppressWarnings("unchecked")
-    public void add(Expression data)
+    public void add(expression.Expression data)
     {
         if (fTemp.CodeSize() > 0)
         {
@@ -135,7 +138,9 @@ public class JunkPile
         
         fData.add(data);
         fPC += data.Size();
-    }
+    }    
+
+    
     public void add(ArrayList data)
     {
         for (Object o : data)
@@ -151,8 +156,8 @@ public class JunkPile
             add((OMF_Opcode)data);
         else if (data instanceof byte[])
             add((byte[])data);
-        else if (data instanceof Expression)
-            add((Expression)data);
+        else if (data instanceof expression.Expression)
+            add((expression.Expression)data);
         else if (data instanceof ArrayList)
             add((ArrayList)data);
         // skip it.

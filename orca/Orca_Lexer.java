@@ -1,3 +1,4 @@
+package orca;
 
 /*
  * Created on Feb 24, 2006
@@ -6,14 +7,20 @@
 
 import java.io.InputStream;
 
-public class Lexer_Orca extends Lexer
+import asm816.AsmException;
+import asm816.Error;
+import asm816.Lexer;
+import asm816.Token;
+import asm816.ctype;
+
+public class Orca_Lexer extends Lexer
 {
 
-    public Lexer_Orca(InputStream io)
+    public Orca_Lexer(InputStream io)
     {
         super(io);
     }
-    public Lexer_Orca(String s)
+    public Orca_Lexer(String s)
     {
         super(s);
     }       
@@ -247,7 +254,9 @@ public class Lexer_Orca extends Lexer
                 while (ctype.isalnum(c) || c == '_' || c == '~');
                 
                 Poke(c);
-                return new Token(Token.SYMBOL, buff.toString(), this);
+                String s = buff.toString();
+                if (!fCase) s = s.toUpperCase();
+                return new Token(Token.SYMBOL, s, this);
             } else
                 return new Token(c);      
         }   

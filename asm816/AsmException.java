@@ -1,3 +1,4 @@
+package asm816;
 import java.io.PrintStream;
 
 /*
@@ -46,6 +47,10 @@ public class AsmException extends Exception
         
         switch (fError)
         {
+        case E_LABEL_REQUIRED:
+            s.append("Label is required"); 
+            // todo -- need to mention which directive.
+            break;
         case E_ALIGN:
             s.append("Invalid ALIGN value");
             break;

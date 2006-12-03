@@ -1,10 +1,18 @@
+package orca;
 import java.util.ArrayList;
+
+import asm816.AsmException;
+import asm816.ByteBuffer;
+import asm816.Token;
+import asm816.ctype;
 
 import omf.OMF_Expr;
 import omf.OMF_Expression;
 import omf.OMF_Label;
 import omf.OMF;
 import omf.OMF_Strong;
+
+import expression.*;
 
 /*
  * Created on Nov 11, 2006
@@ -34,6 +42,11 @@ public class Orca_DC
      */
     public static Object DC_F(String s)
     {
+        /*
+        Float.floatToRawIntBits();
+        Float.parseFloat()
+        */
+        
         /*
         Lexer_Orca lex = new Lexer_Orca(s); 
         
@@ -171,26 +184,28 @@ public class Orca_DC
      */
     public static Object DC_I(String s, int size, int pc, boolean case_sensitive, int mod) throws AsmException
     {
-        Lexer_Orca lex = new Lexer_Orca(s);        
+        Orca_Lexer lex = new Orca_Lexer(s);  
+        lex.SetCase(case_sensitive);
         int c;
         if (size == 0) size = 2;
+        
+        ComplexExpression ce;
+        Expression e;
+        
         ArrayList<Expression> out = new ArrayList<Expression>();
         for(;;)
         {
-            Expression ex = new Expression(case_sensitive);
-            ex.ParseExpression(lex);
+            ce = ExpressionParser.Parse(lex, pc);
             
             if (mod == '^')
-                ex.Shift(-16);
+                ce.Shift(-16);
             else if (mod == '>')
-                ex.Shift(-8);
+                ce.Shift(-8);
             
-            ex.SetSize(size);
-            ex.SetPC(pc);
+            e = new Expression(ce);
+            e.SetSize(size);
 
-            
-            
-            out.add(ex);
+            out.add(e);
             
             c = lex.Peek();
             if (c == ',')
@@ -213,7 +228,7 @@ public class Orca_DC
     
     public static Object DC_R(String s, boolean case_sensitive) throws AsmException
     {
-        Lexer_Orca lex = new Lexer_Orca(s);
+        Orca_Lexer lex = new Orca_Lexer(s);
         Token t;
         int c;
         
@@ -250,7 +265,7 @@ public class Orca_DC
     @SuppressWarnings("unchecked")
     public static Object DC_S(String s, int size, boolean case_sensitive) throws AsmException
     {
-        Lexer_Orca lex = new Lexer_Orca(s);
+        Orca_Lexer lex = new Orca_Lexer(s);
         Token t;
         int c;
         

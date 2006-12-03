@@ -1,9 +1,10 @@
+package orca;
 /*
  * Created on Mar 14, 2006
  * Mar 14, 2006 11:34:23 PM
  */
 
-public enum Directive
+public enum Orca_Directive
 {
     ABSADDR,
     ALIGN,
@@ -24,6 +25,7 @@ public enum Directive
     EQU,
     ERR,
     EXPAND,
+    GEN,
     GEQU,
     IEEE,
     INSTIME,
@@ -48,9 +50,15 @@ public enum Directive
     START,
     SYMBOL,
     TITLE,
+    TRACE,
     USING,
       
     M6502,
     M65C02,
     M65816, 
+    
+
+    MCOPY,
+    MDROP,
+    MLOAD,
 }
