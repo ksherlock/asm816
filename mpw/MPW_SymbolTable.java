@@ -11,10 +11,10 @@ import expression.__Expression;
  * 
  */
 
-public class MPWSymbolTable extends SymbolTable
+public class MPW_SymbolTable extends SymbolTable
 {
     
-    MPWSymbolTable()
+    MPW_SymbolTable()
     {
         super();
         fWith = new ArrayList<String>();

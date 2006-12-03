@@ -53,7 +53,7 @@ public class MPW_Parser extends Parser
     
     private ContextMap<String, Record> fRecords;
     
-    private MPWSymbolTable fSymbols;
+    private MPW_SymbolTable fSymbols;
     
     private static final int STRING_PASCAL = 0;
     private static final int STRING_ASIS = 1;
@@ -64,7 +64,7 @@ public class MPW_Parser extends Parser
     {
         super();
         fPC = 0;
-        fSymbols = new MPWSymbolTable();
+        fSymbols = new MPW_SymbolTable();
         fRecords = new ContextMap<String, Record>();
         fData = null;
         fSegment = null;
