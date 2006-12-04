@@ -132,6 +132,25 @@ public class MPW_Parser extends Parser
         fDirectives.put("DS.L", MPW_Directive.DS);        
     }
     
+    protected void AddOpcodes()
+    {
+        super.AddOpcodes();
+
+        // synonyms
+        fOpcodes.put("BLT", INSTR.BCC);
+        fOpcodes.put("BGE", INSTR.BCS);
+        fOpcodes.put("CPA", INSTR.CMP);
+        
+        fOpcodes.put("TSA", INSTR.TSC);
+        fOpcodes.put("TAS", INSTR.TCS);
+        fOpcodes.put("TAD", INSTR.TCD);
+        fOpcodes.put("TDA", INSTR.TDC);
+        
+        fOpcodes.put("SWA", INSTR.XBA);
+        
+    }
+    
+    
     protected void ParseSegment(Lexer lex) throws AsmException 
     {
         fSymbols.Push(); // create local context.

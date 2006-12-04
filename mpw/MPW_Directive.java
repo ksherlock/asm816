@@ -61,10 +61,7 @@ public enum MPW_Directive
     
     MACHINE,
     STRING,
-    MSB,
     CASE,
-    LONGA,
-    LONGI,
     BLANKS,
     
     ALIGN,
@@ -93,6 +90,19 @@ public enum MPW_Directive
     MACRO,
     ENDM,
     MEND,
+    
+    /*
+     * aii specific
+     */
+    LONGA,
+    LONGI,
+    MSB,
+    STACKDP,
+    ENDSTACK,
+    SEGATTR,
+    INIT,
+    ENDI,
+    
     
     /*
      * M68k only?

@@ -32,10 +32,12 @@ public enum INSTR
     COP,
     CPX,
     CPY,
+    DEA,
     DEC,
     DEX,
     DEY,
     EOR,
+    INA,
     INC,
     INX,
     INY,
@@ -263,6 +265,8 @@ public enum INSTR
             -1, 0xc0, 0xcc, -1, 
             -1, -1, -1, 0xc4,
         },
+        //DEA
+        {0x3a},
         //DEC,
         {
             0x3a, -1, 0xce, 0xde, 
@@ -281,6 +285,8 @@ public enum INSTR
             0x41, 0x51, 0x53, 0x57,
             0x43
         },
+        //INA
+        {0x1a},
         //INC,
         {
             0x1a, -1, 0xee, 0xfe, 
