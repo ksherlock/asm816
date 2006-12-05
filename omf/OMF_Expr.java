@@ -42,7 +42,7 @@ public class OMF_Expr extends OMF_Opcode {
     public OMF_Expr(int type, int bytes, ArrayList expr)
     {
         super(type);
-        fGenBytes = 0;
+        fGenBytes = bytes;
         if (expr != null)
             fExpr = (ArrayList)expr.clone();
         else expr = new ArrayList();
