@@ -4,6 +4,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.Reader;
 import java.io.StringReader;
+import java.util.ArrayList;
 
 /*
  * Created on Feb 24, 2006
@@ -24,6 +25,10 @@ public abstract class Lexer
     
     int[] fPushBack;
     int fPushPtr;
+
+    private boolean fIWS;
+
+    protected String fLocalLabel;
     
     protected static final Token Token_EOL = new Token(Token.EOL);
     protected static final Token Token_EOF = new Token(Token.EOF);
@@ -48,12 +53,24 @@ public abstract class Lexer
         
         fPushBack = new int[8];
         fPushPtr = -1;
+        fLocalLabel = "";
     }
     
     public void SetCase(boolean tf)
     {
         fCase = tf;
     }
+
+    public void IgnoreWhiteSpace(boolean bool)
+    {
+        fIWS = bool;
+    }
+
+    public void SetLocalLabel(String lab)
+    {
+        if (lab == null) lab = "";
+        fLocalLabel = lab;
+    }    
     
     public int Line()
     {
@@ -68,8 +85,46 @@ public abstract class Lexer
     {
         return fLast;
     }    
+ 
+    public __TokenIterator Arguments(boolean ignorespace) throws AsmException
+    {
+        ArrayList<Token> out = new ArrayList<Token>();
+ 
+        Token t = Expect(Token.EOL, Token.SPACE);
+        int type = t.Type();
+        // null or a blank Array?
+        if (type == Token.EOL) return null;
+        
+        for(;;)
+        {
+            t = NextToken();
+            type = t.Type();
+            if (ignorespace && type == Token.SPACE) 
+                continue;
+            if (type == Token.EOL)
+                break;
+            out.add(t);
+        }
+        
+        return new TokenIterator(out);
+    }    
     
+    
+    /*
+     * returns 1-based index
+     * 
+     */
+    public int ExpectSymbol(String name) throws AsmException
+    {
+        Token t = Expect(Token.SYMBOL);
+        return t.ExpectSymbol(name);
+    }
 
+    public int ExpectSymbol(String... names) throws AsmException
+    {
+        Token t = Expect(Token.SYMBOL);
+        return t.ExpectSymbol(names);
+    }    
     
     public Token Expect(int[] arg) throws AsmException
     {
@@ -97,9 +152,15 @@ public abstract class Lexer
         Token t;
         if (fEof) return Token_EOF;
         
-        t = (fToken == null) ? __NextToken() : fToken;
-        fToken = null;
-        fLast = t;
+        for(;;)
+        {
+            t = (fToken == null) ? __NextToken() : fToken;
+            fToken = null;
+            fLast = t;
+            
+            if (fIWS && t.Type() == Token.SPACE) continue;
+            break;
+        }
         
         // return EOL prior to EOF.
         if (t.Type() == Token.EOF)
@@ -201,12 +262,15 @@ public abstract class Lexer
                 break;
             }                
         }
+        fIWS = false;
         fLine++;
         fColumn = 0;
     }
     
     abstract protected Token __NextToken() throws AsmException;   
     
+
+
     protected static final int EOF = -1;
     
 }

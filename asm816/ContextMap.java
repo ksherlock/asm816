@@ -34,12 +34,27 @@ public class ContextMap<K,V>
         return null;
     }
     
+    public V Get(K key, boolean deep)
+    {
+        V v;
+        if ((v = fMap.get(key)) != null) return v;
+        
+        if (deep && fBackbone != null) return fBackbone.Get(key);
+        return null;
+    }    
+    
     public boolean Put(K key, V value)
     {
         if (fMap.containsKey(key)) return false;
         fMap.put(key, value);
         return true;
-    }     
+    }  
+    public boolean Put(K key, V value, boolean replace)
+    {
+        if (replace == false && fMap.containsKey(key)) return false;
+        fMap.put(key, value);
+        return true;
+    }    
     
     public Set<Entry<K, V>> Set()
     {

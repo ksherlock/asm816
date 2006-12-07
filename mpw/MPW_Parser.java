@@ -3,7 +3,10 @@ package mpw;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 
 import asm816.AddressMode;
 import asm816.AsmException;
@@ -14,12 +17,16 @@ import asm816.JunkPile;
 import asm816.Lexer;
 import asm816.Parser;
 import asm816.Token;
+import asm816.__TokenIterator;
 import asm816.ctype;
 
 import expression.*;
 
 import omf.OMF;
 import omf.OMF_DS;
+import omf.OMF_Eof;
+import omf.OMF_Local;
+import omf.OMF_Opcode;
 import omf.OMF_Segment;
 
 
@@ -35,8 +42,6 @@ import omf.OMF_Segment;
  * 
  */
 
-// TODO -- create base Parser class to deal with common functionality.
-
 
 public class MPW_Parser extends Parser
 {
@@ -44,16 +49,18 @@ public class MPW_Parser extends Parser
     private int fAlign;
     private boolean fMSB;
 
-    
-    private boolean fEndSeg;
     private boolean fEndFile;
     
     private JunkPile fData;
     private OMF_Segment fSegment;
     
     private ContextMap<String, Record> fRecords;
-    
+    private ContextMap<String, Boolean> fExternals;
     private MPW_SymbolTable fSymbols;
+    private ContextMap<String, Boolean> fExports;
+    
+    private HashMap<String, ArrayList<String>> fDataSegs;
+    private String fOpcode;
     
     private static final int STRING_PASCAL = 0;
     private static final int STRING_ASIS = 1;
@@ -66,16 +73,22 @@ public class MPW_Parser extends Parser
         fPC = 0;
         fSymbols = new MPW_SymbolTable();
         fRecords = new ContextMap<String, Record>();
+        fExternals = new ContextMap<String, Boolean>();
+        
+        fDataSegs = new HashMap<String, ArrayList<String>>();
+        
+        fExports = new ContextMap<String, Boolean>();
+        
+        
         fData = null;
         fSegment = null;
-        fStringMode = STRING_PASCAL;
+        fStringMode = STRING_ASIS;
         fMSB = false;
         fM = fX = true;
         fMachine = INSTR.m65816;
         
-        fEndFile = false;
-        fEndSeg = false;
-        
+        fEndFile = false;  
+        fOpcode = "";
     }
     
     
@@ -111,8 +124,12 @@ public class MPW_Parser extends Parser
     
     protected void AddDirectives()
     {
+        fImpliedAnop = MPW_Directive.IMPLIED_ANOP;
+        
         for (MPW_Directive i : MPW_Directive.values())
                 fDirectives.put(i.name(), i);
+        fDirectives.remove("IMPLIED_ANOP");
+        
         fDirectives.put("ENDP", MPW_Directive.ENDPROC);
         fDirectives.put("FUNCTION", MPW_Directive.PROC);
         fDirectives.put("ENDFUNCTION", MPW_Directive.ENDPROC);
@@ -129,7 +146,9 @@ public class MPW_Parser extends Parser
         
         fDirectives.put("DS.B", MPW_Directive.DS);
         fDirectives.put("DS.W", MPW_Directive.DS);
-        fDirectives.put("DS.L", MPW_Directive.DS);        
+        fDirectives.put("DS.L", MPW_Directive.DS);
+        
+
     }
     
     protected void AddOpcodes()
@@ -147,20 +166,73 @@ public class MPW_Parser extends Parser
         fOpcodes.put("TDA", INSTR.TDC);
         
         fOpcodes.put("SWA", INSTR.XBA);
-        
     }
     
-    
-    protected void ParseSegment(Lexer lex) throws AsmException 
+    private void EndSegment(String lab)
     {
-        fSymbols.Push(); // create local context.
+        if (lab != null)
+        {
+            fSymbols.Put(lab, new RelExpression(fPC));
+            AddLabel(lab);
+        }
+        
+        Reduce();
+        fSymbols.PrintTable(System.out);
+        
+        fSymbols.ClearWith();
+        
+        fRecords.Pop();
+        fExternals.Pop();
+        fSymbols.Pop();
+        fExports.Pop();
+        
+        
+        fData = null;
+        fSegment = null;
+    }
+    
+    private void NewSegment(String lab, boolean priv, boolean data)
+    {
+        fSegment = new OMF_Segment();
+        fSegment.SetSegmentName(lab);
+        fData = new JunkPile();
+        
+        if (priv && (fExternals.Get(lab) != null)) priv = false;
+        
+        if (priv) fSegment.SetAttributes(OMF.KIND_PRIVATE);
+        fSegment.SetKind(data ? OMF.KIND_DATA : OMF.KIND_CODE);
+        
+        fSymbols.Push(); 
         fRecords.Push();
+        fExternals.Push();
+        fExports.Push(); 
+        
         
         fSymbols.Put(fSegment.SegmentName(), new RelExpression(0)); 
+
+        // reset fStringMode?
+        fMSB = false;
         fSymbols.ClearWith(); // shouldn't be necessary
+    }
+    
+    protected void ParseSegment(String lab, __TokenIterator ti) throws AsmException 
+    {
+        boolean export = false;
         
-        ((MPW_Lexer)lex).SetLocalLabel(fSegment.SegmentName());
+        Token t;
+        String s;
         
+        t = ti.Expect(Token.SYMBOL, Token.EOL);
+        
+        if (t.Type() == Token.SYMBOL)
+        {
+            int i = t.ExpectSymbol("ENTRY", "EXPORT");
+            if (i == 2) export = true;
+            ti.Expect(Token.EOL);
+        }
+        
+        NewSegment(lab, !export, false);
+       
         if (fMachine == INSTR.m65816)
         {
             fM = true;
@@ -170,38 +242,8 @@ public class MPW_Parser extends Parser
         {
             fM = false;
             fX = false;
-        }
-        
-        fData = new JunkPile();
-
-        fMSB = false;
-        
-        fEndSeg = false;
-        fEndFile = false;
-        
-        for (;;)
-        {
-            ParseLine(lex);
-            if (fEndFile || fEndSeg) break;
-        }
-        
-        if (!fEndSeg)
-        {
-            // TODO -- warn about premature EOF
-        }
-        
-        // Local symbol table.
-        
-        fSymbols.PrintTable(System.out);
-       
-        Reduce();
-        fSymbols.Pop();
-        fSymbols.ClearWith(); 
-        fRecords.Pop();
-        fSegment = null;
-        fData = null;
-       
-    }
+        }      
+   }
     
     // everytime simplification happens, the current WITH could
     // affect it, even if it shouldn't... 
@@ -211,21 +253,85 @@ public class MPW_Parser extends Parser
     
     protected void Reduce()
     {
+        
+        FileOutputStream outf = null;
+        try
+        {
+            outf = new FileOutputStream("mpwout.o");
+        }
+        catch (FileNotFoundException e1)
+        {
+            // TODO Auto-generated catch block
+            e1.printStackTrace();
+        } 
+        
         ArrayList ops = fData.GetArrayList();
         fData = new JunkPile();
-        
-        /*
-        for (Object op : ops)
-        {
-            if (op instanceof IExpression)
-            {
-                IExpression ie = ((IExpression)op).Simplify(fSymbols);
-                fData.add(ie.toOpcode(fSegment.SegmentName()));
-            }
-            else fData.add_object(op);
-        }
-        */
 
+        for(Object op : ops)
+        {
+            if (op instanceof Expression)
+            {
+                Expression e = (Expression)op;
+               // reduce
+                //try
+                //{
+                    e.Simplify(fSymbols, true);
+                //}
+                /*
+                catch (AsmException err)
+                {
+                    // TODO Auto-generated catch block
+                    err.printStackTrace();
+                }
+                */
+                Integer v = e.Value();
+                if (v != null)
+                {                        
+                    // todo -- check for dp overflow.
+                    int value = v.intValue();
+                    switch(e.Size())
+                    {
+                    case 0:
+                        break;
+                    case 1:
+                        fData.add8(value, 0);
+                        break;
+                    case 2:
+                        fData.add16(value, 0);
+                        break;
+                    case 3:
+                        fData.add24(value, 0);
+                        break;
+                    case 4:
+                        fData.add32(value, 0);
+                        break;
+                    }
+                }
+                else
+                {
+                    fData.add(e);
+                }
+            }
+            else if (op instanceof OMF_Opcode)
+                fData.add((OMF_Opcode)op);
+        }
+
+        // Now, go through a final time 
+        // save to disk.
+        ops = fData.GetArrayList();
+
+        for (Object op: ops)
+        {
+            if (op instanceof Expression)
+            {
+                Expression e = (Expression)op;
+                op = e.toOpcode(fSegment.SegmentName());
+            }
+            fSegment.AddOpcode((OMF_Opcode)op);
+        }
+        fSegment.AddOpcode(new OMF_Eof());
+        fSegment.Save(outf);
     }
 
     protected void ParseLine(Lexer lex)
@@ -235,43 +341,56 @@ public class MPW_Parser extends Parser
         String lab = null;
         
         boolean inSeg = fSegment != null;
+        boolean inData = inSeg ? fSegment.Kind() == OMF.KIND_DATA : false;
         fPC = fData == null ? 0 : fData.Size();
         
         
+        
         try
-        {
+        {         
             t = lex.Expect(Token.SPACE, Token.EOF, Token.EOL, Token.SYMBOL);
 
-            switch(t.Type())
+            int type = t.Type();
+            
+            if (type == Token.EOF)
             {
-            case Token.EOF:
+                // TODO -- should warn if not currently inSeg.
                 fEndFile = true;
                 return;
-            case Token.EOL:
+            }
+            if (type == Token.EOL)
+            {
                 return;
-            case Token.SPACE:
-                break;
-            case Token.SYMBOL:
+            }
+            if (type == Token.SYMBOL)
+            {
+                Token oldt = t;
                 lab = t.toString();
-                
                 // check for '@' label
                 if (lab.indexOf('@') >= 0)
                 {
                     // TODO -- warn if not in a segment.
                 }
-                else if (inSeg) ((MPW_Lexer)lex).SetLocalLabel(lab);
-                
-                t = lex.Expect(Token.SPACE, Token.EOL);
-                if (t.Type() == Token.SPACE) break;
-                           
-                // label only, treat as anop
-                if (inSeg)
-                    fSymbols.Put(lab, new RelExpression(fPC));
-                return;   
+                else if (inSeg)
+                {
+                    ((MPW_Lexer)lex).SetLocalLabel(lab);
+                }
+                t = lex.Expect(Token.EOL, Token.SPACE);
+                if (t.Type() == Token.EOL)
+                {
+                    boolean tf = ParseDirective(lab, lex, MPW_Directive.IMPLIED_ANOP);
+                    if (!tf)
+                    {
+                        throw new AsmException(Error.E_UNEXPECTED, oldt);
+                    }
+                    return;
+                }
             }
-            
+
             t = lex.Expect(Token.SYMBOL);
             s = t.toString().toUpperCase();
+            fOpcode = s;
+
             
             MPW_Directive dir = (MPW_Directive)fDirectives.get(s);
             if (dir != null)
@@ -282,7 +401,7 @@ public class MPW_Parser extends Parser
                return;
             }
             
-            if (inSeg)
+            if (inSeg && !inData)
             {
                 INSTR instr = fOpcodes.get(s);
                 if (instr != null)
@@ -305,222 +424,249 @@ public class MPW_Parser extends Parser
         }      
     }
     
+    /*
+     * TODO -- find a more OOP way to do this via a directive
+     * class & inheritance?
+     * 
+     */
     protected boolean ParseDirective(String lab, Lexer lex, Enum d) throws AsmException
     {
-        boolean inSeg = (fSegment != null);
+        boolean inSeg = fSegment != null;
+        boolean inData = inSeg ? fSegment.Kind() == OMF.KIND_DATA : false;
+
         __Expression e = null;
         MPW_Directive dir = (MPW_Directive)d;
         
+        __TokenIterator ti = lex.Arguments(true);
+        
+        // add a label except for these:
+        if (inSeg && lab != null)
+        {
+            switch(dir)
+            {
+            case EQU:
+            case END:
+            case PROC:
+            case ENDPROC:
+            case RECORD:
+            case ENDR:            
+                break;
+                
+                /* TODO -- once ALIGN is figured out, 
+                 * DC/DCB/DS might go here too. 
+                 */
+                
+            default:
+                AddLabel(lab);
+                fSymbols.Put(lab, new RelExpression(fPC));
+            }
+        }
+        
         switch(dir)
         {
+        case IMPLIED_ANOP:
+            // EOL already processed.
+            if (!inSeg) return false;
+            break;
         
         case EQU:
             {
-                lex.Expect(Token.SPACE);
-                e = ParseExpression(lex);
+                e = ParseExpression(ti);    
                 
                 if (lab != null)
                 {
+                    e = e.Simplify(fSymbols, false);
                     fSymbols.Put(lab, e);
+                    
+                    if (inData)
+                    {
+                        Expression ex = new Expression(e);
+                        ex.SetName(lab);
+                        ex.SetType(OMF.OMF_GEQU);
+                        ex.SetSize(0);
+                        fData.add(ex);
+                    }
+                    
                 }
                 e = null;
                 lab = null;
             }
             break;
         
-            /*
-             * PROC (|ENTRY|EXPORT)
-             * 
-             */
         case PROC:
-            if (inSeg) return false;
-            {     
-                boolean entry = true;
+            if (inSeg) EndSegment(null);
+            ParseSegment(lab, ti);
+            lex.SetLocalLabel(lab);
+
                 
-                // TODO MPW allows label to be optional...
-                if (lab == null)
-                    throw new AsmException(Error.E_LABEL_REQUIRED, lex);
-                
-                Token t;
-                t = lex.Expect(Token.SPACE, Token.EOL);
-                
-                if (t.Type() == Token.SPACE)
-                {
-                    t = lex.Expect(Token.SYMBOL);
-                    String s = t.toString().toUpperCase();
-                    if (s.equals("ENTRY"))
-                        entry = true;
-                    else if (s.equals("EXPORT"))
-                        entry = false;
-                    else throw new AsmException(Error.E_UNEXPECTED, t);
-                    
-                    lex.Expect(Token.EOL);
-                }
-                    
-                
-                
-                fSegment = new OMF_Segment();
-                fSegment.SetSegmentName(lab);
-                
-                ParseSegment(lex);
-                
-                lab = null;
-            }
+            lab = null;
             break;
             
+        case ENDR:
         case ENDPROC:
-            fEndSeg = true;
+                
+            if (inSeg == false) return false;
+    
+            EndSegment(lab);
+            lab = null;
             break;
             
         case END:
-            fEndSeg = true;
+            if (inSeg)
+            {    
+                EndSegment(lab);
+                lab = null;                
+            }
             fEndFile = true;
             break;
             
         case RECORD:
+            if (inData)
+                EndSegment(null);
             ParseRecord(lex, lab);
             lab = null;
             break;
             
         
         case CASE:
-            fCase = ParseOnOff(lex, false);
+            fCase = ParseOnOff(ti, false);
             lex.SetCase(fCase);
             break;
         
         case DS:
             if (!inSeg) return false;
-            
-            ParseDS(lex, lab);
-
+            ParseDS(ti, lab, DotSize('w'));
             break;
             
         case DC:
-            ParseDC(lex);
+            if (!inSeg) return false;
+            ParseDC(ti, lab, DotSize('w'));
             break;
             
         case DCB:
-            ParseDCB(lex);
+            if (!inSeg) return false;
+            ParseDCB(ti, lab, DotSize('w'));
             break;
             
             
         case MACHINE:
             {
-                Token t;
-                String s;
-            
-                lex.Expect(Token.SPACE);
-                t = lex.Expect(Token.SYMBOL);
-                s = t.toString().toUpperCase();
+                lex.Expect(Token.SPACE);                
+                int i = lex.ExpectSymbol("M65816", "M65C02", "M6502");
+                lex.Expect(Token.EOL);
                 
-                if (s.equals("M65816"))
+                switch(i)
                 {
+                case 1:
                     fMachine = INSTR.m65816;
                     fM = fX = true;
-                }
-                else if (s.equals("M65C02"))
-                {
+                    break;
+                case 2:
                     fMachine = INSTR.m65c02;
                     fM = fX = false;
-                }
-                else if (s.equals("M6502"))
-                {
+                    break;
+                case 3:
                     fMachine = INSTR.m6502;
                     fM = fX = false;
-                }
-                else throw new AsmException(Error.E_UNEXPECTED, t);
-
-                lex.Expect(Token.EOL);
-            
+                    break;
+                }          
             }
             break;
             
         case MSB:
-            fMSB = ParseOnOff(lex, false);
+            fMSB = ParseOnOff(ti, false);
             break;            
             
         case STRING:
             {
                 Token t;
-                String s;
                 t = lex.Expect(Token.EOL, Token.SPACE);
                 if (t.Type() == Token.EOL)
                     fStringMode = STRING_PASCAL;
                 else
                 {
-                    t = lex.Expect(Token.SYMBOL);
-                   
-                    s = t.toString().toLowerCase();
-                    if (s.equals("pascal"))
+                    int i = lex.ExpectSymbol("PASCAL", "C", "ASIS", "GSOS");
+                    switch(i)
+                    {
+                    case 1:
                         fStringMode = STRING_PASCAL;
-                    else if (s.equals("c"))
+                        break;
+                    case 2:
                         fStringMode = STRING_C;
-                    else if (s.equals("asis"))
+                        break;
+                    case 3:
                         fStringMode = STRING_ASIS;
-                    else if (s.equals("gsos"))
+                        break;
+                    case 4:
                         fStringMode = STRING_GSOS;
-                    else
-                        throw new AsmException(Error.E_UNEXPECTED, t);
-  
-                    lex.Expect(Token.EOL);             
+                        break;
+                    }
+                    lex.Expect(Token.EOL);            
                 }
             }
             break;
             
             /*
              * WITH name[,name]
-             */
-            
-            /*
-             * TODO -- WITH/ENDWITH can be nested.
-             * WITH a,b,c == c has highest priority.
+             * 
+             * dual purpose --- equivalent to USING 
+             * if name is a dat segment.
              * 
              */
         case WITH:
             if (!inSeg) return false;
-            {
-                fSymbols.PushWith();
-                
-                Token t;
-                String s;
-                int c;
-                lex.Expect(Token.SPACE);
-                for (;;)
-                {
-                    t = lex.Expect(Token.SYMBOL);
-                    s = t.toString();
-                    fSymbols.AddWith(s);
-                    c = lex.Peek();
-                    if (c != ',') break;
-                    lex.NextChar();
-                }
-                lex.Expect(Token.EOL);
-            }
+            ParseWith(ti);
             break;
             
         case ENDWITH:
             if (!inSeg) return false;
             fSymbols.PopWith();
-            lex.Expect(Token.EOL);
+            ti.Expect(Token.EOL);
             break;
+            
+        case IMPORT:
+            ParseImport(ti);
+            break;
+
+        case EXPORT:
+            ParseExport(ti);
+            break;
+            
             
         default:
             return false;
-        }
-        
-        if (inSeg && lab != null)
-        {
-            if (e == null) e = new RelExpression(fPC);
-            fSymbols.Put(lab, e);
-        }
-        
+        }        
         return true;
+    }
+    
+    private void AddLabel(String lab)
+    {
+        if (lab == null || fSegment == null) return;
+        if (lab.indexOf('@') != -1) return; // local label.
+        
+        OMF_Opcode op = null;
+        
+        if (fExports.Get(lab, false) != null)
+            op = new OMF_Local(OMF.OMF_GLOBAL, lab, 0, 'N', false);
+       
+        else if (fSegment.Kind() == OMF.KIND_DATA)
+            op = new OMF_Local(OMF.OMF_LOCAL, lab, 0, 'N', true);
+            
+        else return;
+        
+        fData.add(op);
     }
     
     protected boolean ParseInstruction(String lab, Lexer lex, INSTR instr) throws AsmException
     {
         int opcode = 0x00;
         int size;
+        
+        if (lab != null)
+        {
+            AddLabel(lab);
+            fSymbols.Put(lab, new RelExpression(fPC));
+        }
 
         boolean check_a = false;
         
@@ -588,12 +734,64 @@ public class MPW_Parser extends Parser
                         && oplab.compareToIgnoreCase("a") == 0)
                     mode = AddressMode.IMPLIED;
             }
-            if (mode == AddressMode.ASSUMED_ABS || mode == AddressMode.ASSUMED_ABS_X || mode == AddressMode.ASSUMED_ABS_Y)
+            opcode = -1;
+            
+            // TODO -- warn if we need to truncate a number.
+            if (mode == AddressMode.ASSUMED_ABS)
             {
-                //...
-                mode = AddressMode.ABS;
+                Integer v = e.Value();
+                if (e == null)
+                    opcode = instr.find_opcode(fMachine, AddressMode.ABS, AddressMode.ABSLONG, AddressMode.DP);
+
+                else
+                {
+                    int i = v.intValue();
+                    if (i <= 0xff)
+                        opcode = instr.find_opcode(fMachine, AddressMode.DP, AddressMode.ABS, AddressMode.ABSLONG);
+
+                    else if (i > 0xffff)                        
+                        opcode = instr.find_opcode(fMachine, AddressMode.ABSLONG, AddressMode.ABS, AddressMode.DP);
+
+                    else 
+                        opcode = instr.find_opcode(fMachine, AddressMode.ABS, AddressMode.ABSLONG, AddressMode.DP); 
+                }
             }
-            opcode = instr.opcode(mode, fMachine);
+            else if (mode == AddressMode.ASSUMED_ABS_X)
+            {
+                Integer v = e.Value();
+                if (e == null)                     
+                    opcode = instr.find_opcode(fMachine, AddressMode.ABS_X, AddressMode.ABSLONG_X, AddressMode.DP_X);
+
+                else
+                {
+                    int i = v.intValue();
+                    if (i <= 0xff)
+                        opcode = instr.find_opcode(fMachine, AddressMode.DP_X, AddressMode.ABS_X, AddressMode.ABSLONG_X);
+
+                    else if (i > 0xffff)                        
+                        opcode = instr.find_opcode(fMachine, AddressMode.ABSLONG_X, AddressMode.ABS_X, AddressMode.DP_X);
+
+                    else 
+                        opcode = instr.find_opcode(fMachine, AddressMode.ABS_X, AddressMode.ABSLONG_X, AddressMode.DP_X); 
+                }            
+            }
+            else if (mode == AddressMode.ASSUMED_ABS_Y)
+            {
+                Integer v = e.Value();
+                if (e == null) 
+                    opcode = instr.find_opcode(fMachine, AddressMode.ABS_Y, AddressMode.DP_Y);
+                else
+                {
+                    int i = v.intValue();
+                    if (i <= 0xff)
+                        opcode = instr.find_opcode(fMachine, AddressMode.DP_Y, AddressMode.ABS_Y);
+
+                    else                     
+                        opcode = instr.find_opcode(fMachine, AddressMode.ABS_Y, AddressMode.DP_Y);
+                }                  
+            }
+            else
+                opcode = instr.opcode(mode, fMachine);
             if (opcode == -1)
             {
                 throw new AsmException(Error.E_OPCODE);
@@ -613,12 +811,7 @@ public class MPW_Parser extends Parser
             }
 
         } /* switch (instr) */
-        
-        if (lab != null)
-        {
-            fSymbols.Put(lab, new RelExpression(fPC));
-        }
-        
+                
         return true;
     }
     
@@ -633,60 +826,62 @@ public class MPW_Parser extends Parser
     private boolean ParseOnOff(Lexer lex, boolean blank) throws AsmException
     {
         Token t;
-        String s;
-        
+ 
         t = lex.Expect(Token.SPACE, Token.EOL);
         if (t.Type() == Token.EOL) return blank;
         
-        t = lex.Expect(Token.SYMBOL);
         
+        int i = lex.ExpectSymbol("ON", "YES", "Y", "OFF", "NO", "N");
         lex.Expect(Token.EOL);
-        
-        s = t.toString().toUpperCase();
-        if (s.equals("ON") || s.equals("Y") || s.equals("YES"))
+        switch(i)
+        {
+        case 1:
+        case 2:
+        case 3:
             return true;
-        
-        if (s.equals("OFF") || s.equals("N") || s.equals("NO"))
+        case 4:
+        case 5:
+        case 6:
             return false;
-              
-        throw new AsmException(Error.E_UNEXPECTED, t);
+        }
+        return blank; // not possible.
     }
+    
+    private boolean ParseOnOff(__TokenIterator ti, boolean blank) throws AsmException
+    {
+        Token t;
+ 
+        t = ti.Expect(Token.SYMBOL, Token.EOL);
+        
+        if (t.Type() == Token.SYMBOL)
+        {
+            int i = t.ExpectSymbol("ON", "YES", "Y", "OFF", "NO", "N");
+            ti.Expect(Token.EOL);
+            switch(i)
+            {
+            case 1:
+            case 2:
+            case 3:
+                return true;
+            case 4:
+            case 5:
+            case 6:
+                return false;
+            }
+        }
+        return blank; // not possible.
+    }    
     
     /*
      * not currently needed.
      * 
      */
-    private int ParseDotSize(Lexer lex, int blank) throws AsmException
+    private int DotSize(int blank)
     {
-        int c;
-        Token t;
-        String s;
-        c = lex.Peek();
-        if (c != '.') return blank;
-        lex.NextChar();
-        
-        t = lex.Expect(Token.SYMBOL);
-        s = t.toString();
-        if (s.length() == 1)
-        {
-            c = s.charAt(0);
-            c = ctype.tolower(c);
-            
-            switch(c)
-            {
-            case 's':
-            case 'd':
-            case 'x':
-            case 'p':
-            
-            case 'b':
-            case 'w':
-            case 'l':
-                return c;
-            }
-            
-        }
-        throw new AsmException(Error.E_UNEXPECTED, t);
+        if (fOpcode == null) return blank; //
+        if (fOpcode.indexOf('.') > 0) 
+            return ctype.tolower(fOpcode.charAt(fOpcode.length() -1));
+        return blank;
     }
     
     
@@ -696,30 +891,21 @@ public class MPW_Parser extends Parser
      *  first expression is repeat count.
      */
     
-    private void ParseDCB(Lexer lex) throws AsmException
-    { 
-        String s;
-        int qualifier = 'w';
-        s = lex.LastToken().toString();
-        if (s.indexOf('.') > 0) 
-            qualifier = ctype.tolower(s.charAt(s.length() -1));
-        
-        
-        int size = QualifierToInt(qualifier);
-        
+    private void ParseDCB(__TokenIterator ti, String lab, int q)
+    throws AsmException
+    {
+        int size = QualifierToInt(q);
         __Expression e;
-        Token t; 
-        int c;      
+        String s;
+        Token t;
         
-        lex.Expect(Token.SPACE);
+        int repeat = ParseIntExpression(ti);
+        ti.Expect(',');
         
-        int repeat = ParseIntExpression(lex);
-        lex.Expect(',');
-        
-        c = lex.Peek();
-        if (c == '\'')
+        t = ti.Peek();
+        if (t.Type() == Token.STRING)
         {
-            t = lex.Expect(Token.STRING);
+            t = ti.Expect(Token.STRING);
             s = t.toString();
             // todo -- check if int or float
             // todo -- null pad to correspond with qalifier.
@@ -730,60 +916,52 @@ public class MPW_Parser extends Parser
         }
         else
         {
-            e = ParseExpression(lex);
+            e = ParseExpression(ti);
+            e = e.Simplify(fSymbols, false);
             Expression ex = new Expression(e);
             ex.SetSize(QualifierToInt(size));
             for (int i = 0; i < repeat; i++)
                 fData.add(ex);          
         }
         
-        lex.Expect(Token.EOL);
+        ti.Expect(Token.EOL);
     }
     
     /*
      * DC[.size] (expression|string)[,(expression|string)]
      * 
      */
-    private void ParseDC(Lexer lex) throws AsmException
+    private void ParseDC(__TokenIterator ti, String lab, int q)
+    throws AsmException
     {
-        String s;
-
-        int qualifier = 'w';
-        s = lex.LastToken().toString();
-        if (s.indexOf('.') > 0) 
-            qualifier = ctype.tolower(s.charAt(s.length() -1));
-        
-        
-        int size = QualifierToInt(qualifier);
-        
+        int size = QualifierToInt(q);
         __Expression e;
+        String s;
         Token t;
         
-        
-        lex.Expect(Token.SPACE);
-        
+     
         for (;;)
         {
-            int c = lex.Peek();
-            if (c == '\'')
+            t = ti.Peek();
+            if (t.Type() == Token.STRING)
             {
-                t = lex.Expect(Token.STRING);
+                t = ti.Expect(Token.STRING);
                 s = t.toString();
+                // TODO -- check if a float.
                 fData.add(StringToByte(s));
-                
+                // TODO -- if size == 2 or 4, align.
             }
             else
             {
-                e = ParseExpression(lex);
+                e = ParseExpression(ti);
+                e = e.Simplify(fSymbols, false);
                 Expression ex = new Expression(e);
                 ex.SetSize(size);
-                fData.add(ex);
+                fData.add(ex); 
             }
-            c = lex.Peek();
-            if (c != ',') break;
+            t = ti.Expect(Token.EOL, (int)',');
+            if (t.Type() == Token.EOL) break;
         }
-        
-        lex.Expect(Token.EOL);
     }
     
     /*
@@ -792,23 +970,16 @@ public class MPW_Parser extends Parser
      * if record name, creates equates for all members.
      * 
      */
-    private void ParseDS(Lexer lex, String lab) throws AsmException
+    
+    private void ParseDS(__TokenIterator ti, String lab, int q)
+    throws AsmException
     {
+        int size = QualifierToInt(q);
+        __Expression e;
         String s;
-
-        int qualifier = 'w';
-        s = lex.LastToken().toString();
-        if (s.indexOf('.') > 0) 
-            qualifier = ctype.tolower(s.charAt(s.length() -1));
-
         
-        int size = QualifierToInt(qualifier);
-        
-        lex.Expect(Token.SPACE);
-        __Expression e = ParseExpression(lex);
-        
-        
-        // check if this is a record template
+        e = ParseExpression(ti);
+        e = e.Simplify(fSymbols, false);
         s = e.toString();
         if (s != null)
         {
@@ -843,6 +1014,7 @@ public class MPW_Parser extends Parser
          */
 
         fData.add(new OMF_DS(length * size));
+        
     }
     
     /*
@@ -874,16 +1046,53 @@ public class MPW_Parser extends Parser
         /*
          * todo -- error if no label name.
          */
-        if (RecordName != null)
+
+       
+        /*
+         * To make life easier, we'll only support
+         * RECORD NUMBER EOL
+         * RECORD (EXPORT | ENTRY) EOL
+         * RECORD EOL
+         */
+   
+        boolean export = false;
+        boolean segment = false;
+        
+        t = lex.Expect(Token.SPACE, Token.EOL);
+        if (t.Type() == Token.EOL)
         {
-            // allow record members to be accessed.
-            // within the record.
-            fSymbols.PushWith();
-            fSymbols.AddWith(RecordName);
+            segment = true;
+            export = false;
+        }
+        else
+        {
+            t = lex.Expect(Token.SYMBOL, Token.NUMBER);
+            if (t.Type() == Token.SYMBOL)
+            {
+                int i = t.ExpectSymbol("EXPORT", "ENTRY");
+                switch(i)
+                {
+                case 1: // export
+                    export = true;
+                case 2: // entry
+                    segment = true;
+                }
+            }
+            else
+            {
+                offset = t.Value();
+            }
+        }
+        if (segment)
+        {
+            NewSegment(RecordName, !export, true);
+            ((MPW_Lexer)lex).SetLocalLabel(fSegment.SegmentName());
+            return;
         }
         
-   
         
+        
+        /*
         lex.Expect(Token.SPACE);
         c = lex.Peek();
         if (c == '{')
@@ -915,7 +1124,15 @@ public class MPW_Parser extends Parser
             else throw new AsmException(Error.E_UNEXPECTED, t);
         }
         lex.Expect(Token.EOL);
-        
+        */
+ 
+        if (RecordName != null)
+        {
+            // allow record members to be accessed.
+            // within the record.
+            fSymbols.PushWith();
+            fSymbols.AddWith(RecordName);
+        }        
         
         Record r = new Record();
         RecordItem baseri = null;
@@ -1054,6 +1271,56 @@ public class MPW_Parser extends Parser
          
         return size * v.intValue();
     }
+
+    
+    /*
+     * EXPORT symbol[,symbol]*
+     * 
+     */
+    private void ParseExport(__TokenIterator ti) throws AsmException
+    {
+        ArrayList<Token> tokens = ti.toList(Token.SYMBOL);
+       
+        for (Token t : tokens)
+            fExports.Put(t.toString(), Boolean.TRUE);
+    }
+        
+    /*
+     * MPW says:
+     * IMPORT --> implist [,implist]*
+     * implist --> '(' symbol [,symbol] ')' [imptype]
+     * implist --> symbol [imptype] [, symbol [imptype]]*
+     * imptype -> : (CODE | DATA | record name)
+     * 
+     * I say: 
+     * IMPORT symbol [,symbol]*
+     */
+    private void ParseImport(__TokenIterator ti) throws AsmException
+    {
+        ArrayList<Token> tokens = ti.toList(Token.SYMBOL);
+       
+        for (Token t : tokens)
+            fExternals.Put(t.toString(), Boolean.TRUE);
+    }
+    
+
+    /*
+     * WITH symbol[,symbol]
+     * TODO -- with can also be equivalent to USING.
+     * in that case, we should import all labels from the 
+     * record/data segment.
+     */
+    private void ParseWith(__TokenIterator ti) throws AsmException
+    {
+        
+        fSymbols.PushWith();
+        
+        ArrayList<Token> tokens = ti.toList(Token.SYMBOL);
+       
+        for (Token t : tokens)
+            fSymbols.AddWith(t.toString());
+    }
+    
     
     private __Expression ParseExpression(Lexer lex) throws AsmException
     {
@@ -1062,6 +1329,11 @@ public class MPW_Parser extends Parser
         e = ExpressionParser.Parse(lex, fPC);
         
         return e.Simplify(fSymbols, false);     
+    }
+    
+    protected ComplexExpression ParseExpression(__TokenIterator iter) throws AsmException
+    {       
+        return MPWExpression.Parse(iter, fPC);   
     }
     
     /*
@@ -1083,6 +1355,21 @@ public class MPW_Parser extends Parser
         
         return v.intValue();
     }
+    private int ParseIntExpression(__TokenIterator ti) throws AsmException
+    {        
+        __Expression e;
+        
+        e = MPWExpression.Parse(ti, fPC); 
+        e = e.Simplify(fSymbols, true);
+        Integer v = e.Value();
+        
+        if (v == null)
+            throw new AsmException(Error.E_EXPRESSION);
+        
+        return v.intValue();
+    }    
+    
+    
     
     private static final boolean QualifierIsInt(int q)
     {
@@ -1211,6 +1498,7 @@ public class MPW_Parser extends Parser
         }
     }
     
+
     class Record
     {
         int Size;

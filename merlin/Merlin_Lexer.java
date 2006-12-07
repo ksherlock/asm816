@@ -132,23 +132,6 @@ public class Merlin_Lexer extends Lexer
                 return new Token(Token.NUMBER, value, this);
             }
 
-            
-            /*
-             * symbolic macro parameter
-             */
-        case ']':
-            if (this.fMacro)
-            {
-                c = NextChar();
-                if (ctype.isdigit(c))
-                {
-                    return new Token(Token.MACRO_PARM, "]" + (char)c, this);
-                }
-
-                Poke(c);
-            }
-            return new Token(c);
-            
             /*
              * character constant -- return as string.
              */
@@ -177,23 +160,48 @@ public class Merlin_Lexer extends Lexer
             }            
             
             /*
+             * ']' number|letter == variable
+             * ']' anything_else == just a ']'
+             */
+        case ']':
+            {
+                int next = Peek();
+                
+                if (ctype.isalnum(next) || next == '_' || next == '~')
+                {
+                    String s = ParseSymbol(']');
+                    
+                    return new Token(Token.SYMBOL, s, this);
+                }
+                return new Token(']');
+                
+            }
+            
+            /*
+             * : symbol == local label
+             */
+        case ':':
+            {
+                int next = Peek();
+                if (ctype.isalpha(next) || next == '_' || next == '~')
+                {
+                    String s = ParseSymbol(':');
+                    
+                    return new Token(Token.SYMBOL, 
+                            fLocalLabel + s , this);
+                }
+                return new Token(':');
+            }
+            
+            /*
              * a symbol or something else to process later.
              */
          default:
 
             if (ctype.isalpha(c) || c == '_' || c == '~')
             {
-                StringBuffer buff = new StringBuffer();
-                
-                do
-                {
-                    buff.append((char)c);
-                    c = NextChar();
-                }
-                while (ctype.isalnum(c) || c == '_' || c == '~');
-                
-                Poke(c);
-                return new Token(Token.SYMBOL, buff.toString(), this);
+                String s = ParseSymbol(c);
+                return new Token(Token.SYMBOL, s, this);
             } else
                 return new Token(c);      
         }   
@@ -252,5 +260,24 @@ public class Merlin_Lexer extends Lexer
         // todo -- error if i == 0?
         Poke(c);
         return new Token(Token.NUMBER, value, this);
+    }
+    
+    private String ParseSymbol(int c)
+    {
+        StringBuffer s = new StringBuffer();
+
+        do
+        {
+            s.append((char)c);
+            c = NextChar();
+        }
+        while (ctype.isalnum(c) || c == '_' || c == '~');
+
+        Poke (c);
+        
+        String out = s.toString();
+        if (!fCase) out = out.toUpperCase();
+        
+        return out;       
     }
 }

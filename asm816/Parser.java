@@ -1,4 +1,5 @@
 package asm816;
+import java.util.ArrayList;
 import java.util.HashMap;
 
 
@@ -16,6 +17,8 @@ public abstract class Parser
     protected HashMap<String, INSTR> fOpcodes;
     protected HashMap<String, Enum> fDirectives;
     
+    protected Enum fImpliedAnop;
+    
     protected boolean fCase;
     protected int fMachine;
     protected boolean fM;
@@ -29,8 +32,10 @@ public abstract class Parser
         
         fOpcodes = new HashMap<String, INSTR>();
         fDirectives = new HashMap<String, Enum>();
-
+        fImpliedAnop = null;
+        
         AddDirectives();
+        AddOpcodes();
     }
     
     protected abstract void AddDirectives();
@@ -43,8 +48,9 @@ public abstract class Parser
     }
     
     
-    protected void ParseLine(Lexer l)
+    protected void ParseLine(Lexer l) throws AsmException
     {
+    
     }
     protected boolean ParseDirective(Lexer l)
     {
@@ -59,6 +65,7 @@ public abstract class Parser
     {
         // reduce: convert any Relative expressions to segment + relative
     }
+    
     
     protected operand ParseOperand(Lexer lex)
     throws AsmException
@@ -328,6 +335,266 @@ public abstract class Parser
          
     }
     
+    protected abstract ComplexExpression ParseExpression(__TokenIterator ti) throws AsmException;
+    
+    protected operand ParseOperand(__TokenIterator ti)
+    throws AsmException
+    {
+        int c;
+        Token t;
+        int type;
+        
+        
+        operand oper = new operand();
+        oper.expression = null;
+        oper.mode = AddressMode.IMPLIED;
+        
+        ComplexExpression e = null;
+        
+    
+        t = ti.Peek();
+        type = t.Type();
+        
+        switch(type)
+        {
+        case Token.EOL:
+            return oper;
+
+            /*
+             * immediate mode. 
+             * '#' [ '<' | '>' | '|' ]? <expression>
+             */
+        case '#':
+            ti.Next();
+            t = ti.Peek();
+            c = t.Type();
+            if (c == '^' || c == '>' || c == '<')
+            {
+                ti.Next();
+            }
+            oper.mode = AddressMode.IMMEDIATE;
+            e =  ParseExpression(ti);
+    
+            // ^ > --> shift it.
+            if (c == '^')
+                e.Shift(-16);
+            else if (c == '>')
+                e.Shift(-8);
+            break;
+            
+            /*
+             * indirect
+             * '(' ['<']? <expression> ')' [',' 'y']?
+             * '(' ['<']? <expression> ',' 'x' ')'
+             * '(' ['<']? <expression> ',' 's' ')' ',' 'y'
+             */
+        case '(':
+            boolean stack = false;
+            ti.Next();
+            
+            t = ti.Peek();
+            c = t.Type();
+            if (c == '<')
+                ti.Next();
+            oper.mode = AddressMode.INDIRECT;
+            e = ParseExpression(ti);
+    
+            // next char must be , or )
+            t = ti.Peek();
+            c = t.Type();
+            if (c == ',')
+            {
+                
+                ti.Next();
+                int i = ti.ExpectSymbol("s", "x");
+
+                if (i == 1)
+                {
+                    stack = true;
+                  
+                }
+                else
+                {
+                    oper.mode = AddressMode.INDIRECT_X;
+                    ti.Expect((int)')');
+                    break;  
+                }                    
+            }
+            ti.Expect((int)')');
+    
+            t = ti.Peek();
+            c = t.Type();
+            if (c == ',')
+            {
+                ti.Next();
+    
+                ti.ExpectSymbol("y");
+                
+  
+                oper.mode = stack 
+                    ? AddressMode.INDIRECT_S_Y 
+                    : AddressMode.INDIRECT_Y;
+                stack = false;
+            }
+            if (stack) 
+                throw new AsmException(Error.E_UNEXPECTED, t);
+            break;
+            
+            /*
+             * long indirect
+             * '[' ['<']? <expression> ']' [',' 'y']?
+             */
+        case '[':
+            ti.Next();
+            
+            t = ti.Peek();
+            c = t.Type();
+            if (c == '<')
+                ti.Next();
+            
+            oper.mode = AddressMode.LINDIRECT;
+            e = ParseExpression(ti);
+            ti.Expect((int)']');
+    
+            t = ti.Peek();
+            c = t.Type();
+            if (c == ',')
+            {
+                ti.Next();
+                ti.ExpectSymbol("y");                
+                oper.mode = AddressMode.LINDIRECT_Y;
+           }
+            break;
+            
+            /*
+             * absolute mode
+             * '|' <expression> [',' ['x' | 'y'] ]?
+             */
+        case '|':
+            ti.Next();
+            oper.mode = AddressMode.ABS;
+            e = ParseExpression(ti);
+    
+            t = ti.Peek();
+            c = t.Type();
+            if (c == ',')
+            {
+                ti.Next();
+                int i = ti.ExpectSymbol("x", "y");
+                
+                if (i == 1)
+                {
+                    oper.mode = AddressMode.ABS_X;
+                }
+                else
+                {
+                    oper.mode = AddressMode.ABS_Y;
+                }   
+            }
+            break;
+            
+            /*
+             * absolute long mode
+             * '>' <expression> [',' 'x']?
+             */
+        case '>':
+            ti.Next();
+            
+            oper.mode = AddressMode.ABSLONG;
+            e = ParseExpression(ti);
+            
+            t = ti.Peek();
+            c = t.Type();
+            if (c == ',')
+            {
+                ti.Next();
+                
+                ti.ExpectSymbol("x");
+                oper.mode = AddressMode.ABSLONG_X;
+           }
+            break;
+            
+            /*
+             * dp mode
+             * <dp,s is allowed as a convenience.
+             * '<' <expression> [',' ['x' | 'y' | 's']]?
+             */
+        case '<':
+            ti.Next();
+            
+            oper.mode = AddressMode.DP;
+            e = ParseExpression(ti);
+    
+            t = ti.Peek();
+            c = t.Type();
+            
+            if (c == ',')
+            {
+                ti.Next();
+                int i = ti.ExpectSymbol("s", "x", "y");
+                
+                switch (i)
+                {
+                case 1:
+                    oper.mode = AddressMode.STACK;
+                    break;
+                case 2:
+                    oper.mode = AddressMode.DP_X;
+                    break;
+                case 3:
+                    oper.mode = AddressMode.DP_Y;
+                    break;                  
+                }            
+            }          
+            break;
+            
+            /*
+             * just another expression...
+             * <expression> [',' ['x' | 'y' | 's']]?
+             */
+        default:
+            // TODO -- reduce, convert to dp/abslong ???
+            // or mark as possibly unknown??
+            oper.mode = AddressMode.ASSUMED_ABS;
+        
+            /* TODO -- if the operand is a known value, set to DP or long as appropriate
+            * eg: 
+            * blah equ $e12000
+            *      lda blah
+            * should be handled as lda >blah
+            */ 
+        
+            e = ParseExpression(ti);
+            // check for ,x,y
+            // ,s --> stack relative (ie, dp)
+            t = ti.Peek();
+            c = t.Type();
+            
+            if (c == ',')
+            {
+                ti.Next();
+                
+                int i = ti.ExpectSymbol("s","x","y");
+                
+                switch(i)
+                {
+                case 1:
+                    oper.mode = AddressMode.STACK;
+                    break;
+                case 2:
+                    oper.mode = AddressMode.ASSUMED_ABS_X;
+                    break;
+                case 3:
+                    oper.mode = AddressMode.ASSUMED_ABS_Y;
+                    break;
+                }
+            }
+        }
+    
+        ti.Expect(Token.EOL);
+        oper.expression = e;
+        return oper;        
+    }   
     
     protected class operand
     {

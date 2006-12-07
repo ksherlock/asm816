@@ -17,6 +17,8 @@ public final class Token
         fValue = 0;
         fString = null;
         fLine = 0;
+        if (ctype.isprint(type))
+            fString = new String( new byte[] {(byte)type});
     }
     public Token(int type, Lexer lex)
     {
@@ -64,6 +66,10 @@ public final class Token
         return fType;
     }
     
+    /*
+     * checks if a token is a register
+     * returns 'a', 'x', 'y', 's', or 0.
+     */
     public int Register()
     {
         if (fType != SYMBOL) return 0;
@@ -109,19 +115,61 @@ public final class Token
        throw new AsmException(Error.E_UNEXPECTED, this);
     }
     
+    public int ExpectSymbol(String name) throws AsmException
+    {
+        if (fType == SYMBOL)
+        {
+            if (fString.compareToIgnoreCase(name) == 0)
+                return 1;
+        }
+        throw new AsmException(Error.E_UNEXPECTED, this);
+    }
+    public int ExpectSymbol(String... names) throws AsmException
+    {
+        if (fType == SYMBOL)
+        {
+            for (int i = 0; i < names.length; i++)
+            {
+                if (fString.compareToIgnoreCase(names[i]) == 0)
+                    return i + 1;
+            }
+        }
+        throw new AsmException(Error.E_UNEXPECTED, this);
+    }    
+    
     public static final int EOF = -1;
     public static final int SPACE = 256;
     public static final int NUMBER = 257;
     public static final int SYMBOL = 258;
     public static final int EOL = 259;
     public static final int STRING = 260;
-    // orca .AND. .EOR. .NOT. .OR.
-    public static final int AND = 261;
-    public static final int OR = 262;
-    public static final int NOT = 263;
-    public static final int EOR = 264;
+
     
-    public static final int MACRO_PARM = 270;
-    public static final int MACRO_LAB = 271;
+    
+
+    
+    // multi-byte expression operators
+    public static final int LOGICAL_AND = 261;
+    public static final int LOGICAL_OR = 262;
+    public static final int LOGICAL_NOT = 263;
+    public static final int LOGICAL_EOR = 264;
+    
+    public static final int LE = 265;
+    public static final int GE = 266;
+    public static final int GT = '>';
+    public static final int LT = '<';
+    
+    public static final int LEFT_SHIFT = 267;
+    public static final int RIGHT_SHIFT = 268;
+    
+    public static final int EQ = '=';
+    public static final int NE = 269;
+    
+    public static final int MOD = 270;
+    
+    
+    
+    public static final int MACRO_PARM = 300;
+    public static final int MACRO_LAB = 301;
     
 }

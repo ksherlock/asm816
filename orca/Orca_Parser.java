@@ -1,6 +1,5 @@
 package orca;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
@@ -18,6 +17,7 @@ import asm816.Lexer;
 import asm816.Parser;
 import asm816.SymbolTable;
 import asm816.Token;
+import asm816.__TokenIterator;
 import asm816.ctype;
 
 import omf.*;
@@ -1013,7 +1013,10 @@ public class Orca_Parser extends Parser
         return v.intValue();
     }
 
-
+    protected ComplexExpression ParseExpression(__TokenIterator iter) throws AsmException
+    {       
+        return OrcaExpression.Parse(iter, fPC);   
+    }
 
  
 }

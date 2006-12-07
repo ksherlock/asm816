@@ -23,11 +23,12 @@ public class Orca_Lexer extends Lexer
     public Orca_Lexer(String s)
     {
         super(s);
-    }       
+    }   
+    
     protected Token __NextToken() throws AsmException
     {
         int c = NextChar();
-        
+        int next = Peek();
         
         switch(c)
         {
@@ -200,43 +201,71 @@ public class Orca_Lexer extends Lexer
              * symbolic macro parameter
              */
         case '&':
-            if (this.fMacro)
-            {
-                StringBuffer buff = new StringBuffer();
-                while (ctype.isalpha(c = NextChar()))
+            {   
+                if (ctype.isalpha(next) || next == '_' || next == '~')
                 {
-                    buff.append((char)c);
+                    String s = ParseSymbol(c);
+                    return new Token(Token.MACRO_PARM, s, this);
+    
                 }
-                Poke(c);
-                if (buff.length() > 0) 
-                    return new Token(Token.MACRO_PARM, buff.toString(), this);
+                return new Token(c);
             }
-            return new Token(c);
             
             /*
-             * in macro context, .label 
+             * might be .label or might be .AND. .OR. .NOT. etc
              */
         case '.':
-            if (this.fMacro && this.Column() == 0)
             {
-                StringBuffer buff = new StringBuffer();
-                c = NextChar();
-                if (ctype.isalpha(c) || c == '_' || c == '~')
+               if (ctype.isalpha(next) || next == '_' || next == '~')
                 {
-                    do
+                    String s = ParseSymbol(c);
+                    next = Peek();
+                    if (next == '.')
                     {
-                        buff.append((char)c);
-                        c = NextChar();
+                        int type = -1;
+                        if (s.equalsIgnoreCase(".AND"))
+                            type = Token.LOGICAL_AND;
+                        else if (s.equalsIgnoreCase(".EOR"))
+                            type = Token.LOGICAL_EOR;
+                        else if (s.equalsIgnoreCase(".NOT"))
+                            type = Token.LOGICAL_NOT;
+                        else if (s.equalsIgnoreCase(".OR"))
+                            type = Token.LOGICAL_OR;
+                        
+                        if (type != -1)
+                        {
+                            NextChar(); // skip over .
+                            return new Token(type, this);
+                        }
                     }
-                    while (ctype.isalnum(c) || c == '_' || c == '~');
+                    return new Token(Token.MACRO_LAB, s, this);
                 }
-
-                Poke(c);
-                if (buff.length() > 0) 
-                    return new Token(Token.MACRO_LAB, buff.toString(), this);                
+                return new Token(c, this);
             }
-            // TODO -- .NOT., etc.
+            
+        case '<':
+            if (next == '=')
+            {
+                NextChar();
+                return new Token(Token.LE);
+            }
+            if (next == '>')
+            {
+                NextChar();
+                return new Token(Token.NE);
+            }
             return new Token(c);
+
+
+        case '>':
+            if (next == '=')
+            {
+                NextChar();
+                return new Token(Token.GE);
+            }
+            return new Token(c);
+
+            
             /*
              * a symbol or something else to process later.
              */
@@ -244,22 +273,33 @@ public class Orca_Lexer extends Lexer
 
             if (ctype.isalpha(c) || c == '_' || c == '~')
             {
-                StringBuffer buff = new StringBuffer();
+                String s = ParseSymbol(c);
                 
-                do
-                {
-                    buff.append((char)c);
-                    c = NextChar();
-                }
-                while (ctype.isalnum(c) || c == '_' || c == '~');
-                
-                Poke(c);
-                String s = buff.toString();
-                if (!fCase) s = s.toUpperCase();
                 return new Token(Token.SYMBOL, s, this);
             } else
                 return new Token(c);      
         }   
     }
+    
+    private String ParseSymbol(int c)
+    {
+        StringBuffer s = new StringBuffer();
+
+        do
+        {
+            s.append((char)c);
+            c = NextChar();
+        }
+        while (ctype.isalnum(c) || c == '_' || c == '~');
+        /*
+         * '.' is allowed to support records.
+         */
+        Poke (c);
+        
+        String out = s.toString();
+        if (!fCase) out = out.toUpperCase();
+        
+        return out;
+    } 
     
 }

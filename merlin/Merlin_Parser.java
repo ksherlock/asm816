@@ -3,12 +3,20 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
+
+import expression.*;
+
+import omf.OMF_Segment;
 
 import asm816.AsmException;
 import asm816.Error;
 import asm816.INSTR;
 import asm816.JunkPile;
+import asm816.Parser;
+import asm816.SymbolTable;
 import asm816.Token;
+import asm816.__TokenIterator;
 import asm816.ctype;
 
 /*
@@ -16,43 +24,56 @@ import asm816.ctype;
  * Nov 9, 2006 8:02:12 PM
  */
 
-public class Merlin_Parser
+public class Merlin_Parser extends Parser
 {
     
     private JunkPile fData;
-    private HashMap<String, INSTR> fOpcodes;
-    private HashMap<String, Merlin_Directive> fDirectives;  
-    private FileOutputStream fFile;
-    private int fPC;
-    private int fError;
+    private OMF_Segment fSegment;
+    private HashSet<String> fExternals;
+    private SymbolTable fVars;
+    
+    SymbolTable fSymbols;
+
     
     public Merlin_Parser()
-    {
-        fOpcodes = new HashMap<String, INSTR>();
-        fDirectives = new HashMap<String, Merlin_Directive>();
+    {      
+        super();
         
-        
-        for (INSTR i: INSTR.values())
-        {
-            fOpcodes.put(i.name(), i);
-        }
+        fSegment = null;
+        fExternals = new HashSet<String>();
+        fSymbols = new SymbolTable();
+        fVars = new SymbolTable();
 
+        
+    }
+
+    @Override
+    protected void AddDirectives()
+    {
         for(Merlin_Directive d: Merlin_Directive.values())
         {
             fDirectives.put(d.name(), d);
-        }
-        // TODO -- facility for LDAL, et alia
-
-        fError = 0;
-        try
-        {
-            File f = File.createTempFile("asm65816", "tmp");
-            
-            fFile = new FileOutputStream(f);
-        }
-        catch (Exception e)
-        {}        
+        }  
+        fDirectives.put("=", Merlin_Directive.EQU);
     }
+    protected void AddOpcodes()
+    {
+        super.AddOpcodes();
+        // TODO -- facility for LDAL, et alia
+        // synonyms
+        fOpcodes.put("BLT", INSTR.BCC);
+        fOpcodes.put("BGE", INSTR.BCS);
+        fOpcodes.put("CPA", INSTR.CMP);
+        
+        fOpcodes.put("TSA", INSTR.TSC);
+        fOpcodes.put("TAS", INSTR.TCS);
+        fOpcodes.put("TAD", INSTR.TCD);
+        fOpcodes.put("TDA", INSTR.TDC);
+        
+        fOpcodes.put("SWA", INSTR.XBA);
+    }
+    
+    
     
     void Parse(Merlin_Lexer lex)
     {
@@ -110,7 +131,7 @@ public class Merlin_Parser
                 for (int foo = 0; foo < 2; foo++)
                 {
                     
-                    Merlin_Directive dir = fDirectives.get(s);
+                    Merlin_Directive dir = (Merlin_Directive)fDirectives.get(s);
                     if (dir != null)
                     {
                         DoDirective(lex, dir);
@@ -157,6 +178,23 @@ public class Merlin_Parser
             break;
         case STRL:
             DoSTR(lex, true);
+            break;
+            
+        case EXT:
+            {
+                lex.Expect(Token.SPACE);
+                
+                for(;;)
+                {
+                    Token t = lex.Expect(Token.SYMBOL);
+                    fExternals.add(t.toString());
+                    if (lex.Peek() == ',')
+                    {
+                        lex.NextChar();
+                    }
+                    else break;
+                }         
+            }
             break;
             
         }
@@ -293,11 +331,11 @@ public class Merlin_Parser
             lex.Expect(Token.EOL);
         }
     }
+
     
-    private void Save()
-    {
-        
-        // go through the arraylist and reduce any expressions,
-        // then save it to disk.
+    protected ComplexExpression ParseExpression(__TokenIterator iter) throws AsmException
+    {       
+        return MerlinExpression.Parse(iter, fPC);   
     }
+
 }

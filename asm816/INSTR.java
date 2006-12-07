@@ -121,6 +121,32 @@ public enum INSTR
        if (!isValid(opcode, machine)) return -1;
        return opcode;
     }
+   
+    /*
+     * return the first valid mode for this opcode, -1
+     * if all are invalid.
+     * 
+     * This method exists to help in cases where no address
+     * mode was explicitely stated and the 
+     */
+    public int find_opcode(int machine, AddressMode... modes)
+    {
+        int index;
+        int op;
+        short[] tmp = __opcodes[this.ordinal()];    
+        
+        for (int i = 0; i < modes.length; i++)
+        {
+            index = modes[i].ordinal();
+            if (index >= tmp.length) continue;
+            op = tmp[index];
+            if (op == -1) continue;
+            if (isValid(op, machine)) return op;
+            return op;
+        }
+        
+        return -1;
+    }
     static public int attributes(int opcode)
     {
         return __attributes[opcode];

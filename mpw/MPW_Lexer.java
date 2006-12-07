@@ -1,10 +1,13 @@
 package mpw;
 import java.io.InputStream;
+import java.util.ArrayList;
 
 import asm816.AsmException;
 import asm816.Error;
 import asm816.Lexer;
 import asm816.Token;
+import asm816.TokenIterator;
+import asm816.__TokenIterator;
 import asm816.ctype;
 
 /*
@@ -14,28 +17,20 @@ import asm816.ctype;
 
 public class MPW_Lexer extends Lexer
 {
-    private String fLocalLabel;
-    
     public MPW_Lexer(InputStream io)
     {      
         super(io);
-        fLocalLabel = "";
     }
     public MPW_Lexer(String s)
     {
         super(s);
-        fLocalLabel = "";
-    }
-    
-    void SetLocalLabel(String lab) 
-    {
-        fLocalLabel = lab;
     }
     
     protected Token __NextToken() throws AsmException
     {
         int c = NextChar();
-        
+
+        int next = Peek();
         
         switch(c)
         {
@@ -66,14 +61,78 @@ public class MPW_Lexer extends Lexer
                
         case '*':
             if (Column() > 1)
-                return new Token(c);               
+            {
+                if (next == '*')
+                {
+                    NextChar();
+                    return new Token(Token.LOGICAL_AND);
+                }
+                return new Token(c);  
+            }
         case ';':           
         case '\r':
         case '\n':
             Poke(c);
             SkipLine();
             return Token_EOL;
-                        
+             
+        case '<':
+            if (next == '<')
+            {
+                NextChar();
+                return new Token(Token.LEFT_SHIFT);
+            }
+            if (next == '=')
+            {
+                NextChar();
+                return new Token(Token.LE);
+            }
+            if (next == '>')
+            {
+                NextChar();
+                return new Token(Token.NE);
+            }
+            return new Token(c);
+
+
+        case '>':
+            if (next == '>')
+            {
+                NextChar();
+                return new Token(Token.RIGHT_SHIFT);
+            }
+            if (next == '=')
+            {
+                NextChar();
+                return new Token(Token.GE);
+            }
+            return new Token(c);            
+            
+        case '-':
+            if (next == '-')
+            {
+                NextChar();
+                return new Token(Token.LOGICAL_EOR);
+            }
+            return new Token(c);
+            
+        case '+':
+            if (next == '+')
+            {
+                NextChar();
+                return new Token(Token.LOGICAL_OR);
+            }
+            return new Token(c);
+            
+        case '/':
+            if (next == '/')
+            {
+                NextChar();
+                return new Token(Token.MOD);
+            }
+            return new Token(c);
+        case '|':
+            return new Token(Token.LOGICAL_OR);
             
             /*
              * hexadecimal number.
@@ -103,8 +162,7 @@ public class MPW_Lexer extends Lexer
                 int value = 0;
                 int i = 0;
                 
-                c = Peek();
-                if (ctype.isalpha(c) || c == '_' || c == '~')
+                if (ctype.isalpha(next) || next == '_')
                 {
                     String s = ParseSymbol('@');
                     return new Token(Token.SYMBOL, 
@@ -211,18 +269,25 @@ public class MPW_Lexer extends Lexer
             // never reached.
             
 
-            
-            /*
-             * in macro context, .label 
-             */
+            // Unicode
+        case 0xAC: // ¬ &not;
+            return new Token(Token.LOGICAL_NOT);
+        case 0xf7: // ÷ &divide;
+            return new Token('/');
+        case 0x2260: // ? &ne;
+            return new Token(Token.NE);
+        case 0x2264: // ? &le;
+            return new Token(Token.LE);
+        case 0x2265: // ? &ge;
+            return new Token(Token.GE);
+        
 
-            
             /*
              * a symbol or something else to process later.
              */
          default:
-
-            if (ctype.isalpha(c) || c == '_' || c == '~')
+             // TODO -- is ~ ok?
+            if (ctype.isalpha(c) || c == '_')
             {
                 String s = ParseSymbol(c);
  
@@ -241,7 +306,7 @@ public class MPW_Lexer extends Lexer
             s.append((char)c);
             c = NextChar();
         }
-        while (ctype.isalnum(c) || c == '_' || c == '~' || c == '.');
+        while (ctype.isalnum(c) || c == '_' || c == '.');
         /*
          * '.' is allowed to support records.
          */
@@ -251,7 +316,6 @@ public class MPW_Lexer extends Lexer
         if (!fCase) out = out.toUpperCase();
         
         return out;
-    }
-    
+    }    
 }
 

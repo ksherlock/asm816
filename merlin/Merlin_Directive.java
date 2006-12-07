@@ -18,6 +18,7 @@ public enum Merlin_Directive
     DSK,
     DUM,
     DW,
+    EQU,
     ERR,
     EXD,
     EXT,

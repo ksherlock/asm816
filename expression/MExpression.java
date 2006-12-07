@@ -64,7 +64,7 @@ public abstract class MExpression implements __Expression
 
     public Integer Value()
     {
-        return fValue;
+        return fRelative ? null : fValue;
     }
 
     public String toString()
@@ -101,6 +101,18 @@ public abstract class MExpression implements __Expression
             m.fRelative 
                 ? new RelExpression(-m.fValue) 
                         : new ConstExpression(-m.fValue);
+    }
+    
+    static public MExpression opLNot(MExpression m)
+    {
+        return m.fRelative 
+            ? null : new ConstExpression(m.fValue.intValue() == 0 ? 1 : 0);
+    }
+ 
+    static public MExpression opNot(MExpression m)
+    {
+        return m.fRelative 
+            ? null : new ConstExpression(~(m.fValue.intValue()));
     }
     
     static public MExpression opAdd(MExpression m1, MExpression m2)
@@ -193,30 +205,95 @@ public abstract class MExpression implements __Expression
             return null;
         }
     }
+ 
     
-    /*
-    public Object clone()
+    static public MExpression opAnd(MExpression m1, MExpression m2)
     {
-        Object copy;
-        try
+        int bits = check_bits(m1, m2);
+        
+        switch(bits)
         {
-            copy = super.clone();
-        }
-        catch (CloneNotSupportedException e)
-        {
+        case 0:
+            return new ConstExpression(m1.fValue & m2.fValue);
+        default:
             return null;
         }
-        return copy;
     }
-    
-    private final MExpression cloneWithValue(int value)
+
+    static public MExpression opOr(MExpression m1, MExpression m2)
     {
-        MExpression copy = (MExpression)clone();
-        copy.fValue = new Integer(value);
-        return copy;
-    }
-    */
+        int bits = check_bits(m1, m2);
+        
+        switch(bits)
+        {
+        case 0:
+            return new ConstExpression(m1.fValue | m2.fValue);
+        default:
+            return null;
+        }
+    } 
+ 
+    static public MExpression opEor(MExpression m1, MExpression m2)
+    {
+        int bits = check_bits(m1, m2);
+        
+        switch(bits)
+        {
+        case 0:
+            return new ConstExpression(m1.fValue ^ m2.fValue);
+        default:
+            return null;
+        }
+    }   
     
+    static public MExpression opLAnd(MExpression m1, MExpression m2)
+    {
+        int bits = check_bits(m1, m2);
+        
+        switch(bits)
+        {
+        case 0:
+            return new ConstExpression(m1.fValue != 0 && m2.fValue != 0 ? 1 : 0);
+        default:
+            return null;
+        }
+    } 
+    
+    static public MExpression opLOr(MExpression m1, MExpression m2)
+    {
+        int bits = check_bits(m1, m2);
+        
+        switch(bits)
+        {
+        case 0:
+            return new ConstExpression(m1.fValue != 0 || m2.fValue != 0 ? 1 : 0);
+        default:
+            return null;
+        }
+    }    
+    
+    static public MExpression opLEor(MExpression m1, MExpression m2)
+    {
+        int bits = check_bits(m1, m2);
+        
+        switch(bits)
+        {
+        case 0:
+            boolean b1,b2;
+            b1 = m1.fValue != 0;
+            b2 = m2.fValue != 0;
+            return new ConstExpression(b1 ^ b2 ? 1 : 0);
+        default:
+            return null;
+        }
+    }
+    
+    /*
+     * returns:
+     * 0 if both expressions are absolute numbers.
+     * 1 or 2 if one is absolute, the other is relative
+     * 3 if both are relative.
+     */
     private static final int check_bits(MExpression m1, MExpression m2)
     {
         int bits = 0;

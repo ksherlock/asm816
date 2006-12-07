@@ -7,6 +7,10 @@ package mpw;
 public enum MPW_Directive
 {
     /*
+     * 
+     */
+    IMPLIED_ANOP,
+    /*
      * code and data module definitions
      */
     PROC,
@@ -102,6 +106,8 @@ public enum MPW_Directive
     SEGATTR,
     INIT,
     ENDI,
+    CODECHK,
+    DATACHK,
     
     
     /*
