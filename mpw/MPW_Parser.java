@@ -4,6 +4,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
+import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -61,7 +62,7 @@ public class MPW_Parser extends Parser
     
     private HashMap<String, ArrayList<String>> fDataSegs;
     private String fOpcode;
-    
+   
     private static final int STRING_PASCAL = 0;
     private static final int STRING_ASIS = 1;
     private static final int STRING_C = 2;
@@ -91,23 +92,11 @@ public class MPW_Parser extends Parser
         fOpcode = "";
     }
     
-    
-    public void ParseFile(File f)
+    public void ParseFile(InputStream stream)
     {
-        try
-        {
-            FileInputStream in = new FileInputStream(f);
-            
-            MPW_Lexer lex = new MPW_Lexer(in);
-            Parse(lex);
-            
-        }
-        catch (FileNotFoundException e)
-        {
-            
-        }
-        
-    }
+        MPW_Lexer lex = new MPW_Lexer(stream);
+        Parse(lex);
+    }   
     
     public void Parse(Lexer lex)
     {
@@ -439,6 +428,7 @@ public class MPW_Parser extends Parser
         
         __TokenIterator ti = lex.Arguments(true);
         
+        
         // add a label except for these:
         if (inSeg && lab != null)
         {
@@ -496,6 +486,7 @@ public class MPW_Parser extends Parser
         case PROC:
             if (inSeg) EndSegment(null);
             ParseSegment(lab, ti);
+            // TODO -- find a better way....
             lex.SetLocalLabel(lab);
 
                 
@@ -523,7 +514,7 @@ public class MPW_Parser extends Parser
         case RECORD:
             if (inData)
                 EndSegment(null);
-            ParseRecord(lex, lab);
+            ParseRecord(ti, lex, lab);
             lab = null;
             break;
             
@@ -550,10 +541,9 @@ public class MPW_Parser extends Parser
             
             
         case MACHINE:
-            {
-                lex.Expect(Token.SPACE);                
-                int i = lex.ExpectSymbol("M65816", "M65C02", "M6502");
-                lex.Expect(Token.EOL);
+            {              
+                int i = ti.ExpectSymbol("M65816", "M65C02", "M6502");
+                ti.Expect(Token.EOL);
                 
                 switch(i)
                 {
@@ -580,12 +570,11 @@ public class MPW_Parser extends Parser
         case STRING:
             {
                 Token t;
-                t = lex.Expect(Token.EOL, Token.SPACE);
-                if (t.Type() == Token.EOL)
-                    fStringMode = STRING_PASCAL;
+                if (ti.EndOfLine())
+                    fStringMode = STRING_ASIS;
                 else
                 {
-                    int i = lex.ExpectSymbol("PASCAL", "C", "ASIS", "GSOS");
+                    int i = ti.ExpectSymbol("PASCAL", "C", "ASIS", "GSOS");
                     switch(i)
                     {
                     case 1:
@@ -601,7 +590,7 @@ public class MPW_Parser extends Parser
                         fStringMode = STRING_GSOS;
                         break;
                     }
-                    lex.Expect(Token.EOL);            
+                    ti.Expect(Token.EOL);            
                 }
             }
             break;
@@ -740,7 +729,7 @@ public class MPW_Parser extends Parser
             if (mode == AddressMode.ASSUMED_ABS)
             {
                 Integer v = e.Value();
-                if (e == null)
+                if (v == null)
                     opcode = instr.find_opcode(fMachine, AddressMode.ABS, AddressMode.ABSLONG, AddressMode.DP);
 
                 else
@@ -759,7 +748,7 @@ public class MPW_Parser extends Parser
             else if (mode == AddressMode.ASSUMED_ABS_X)
             {
                 Integer v = e.Value();
-                if (e == null)                     
+                if (v == null)                     
                     opcode = instr.find_opcode(fMachine, AddressMode.ABS_X, AddressMode.ABSLONG_X, AddressMode.DP_X);
 
                 else
@@ -778,7 +767,7 @@ public class MPW_Parser extends Parser
             else if (mode == AddressMode.ASSUMED_ABS_Y)
             {
                 Integer v = e.Value();
-                if (e == null) 
+                if (v == null) 
                     opcode = instr.find_opcode(fMachine, AddressMode.ABS_Y, AddressMode.DP_Y);
                 else
                 {
@@ -822,31 +811,7 @@ public class MPW_Parser extends Parser
      * OFF | NO | N ==> false
      * 
      *  unsupported OBJ | OBJECT.
-     */
-    private boolean ParseOnOff(Lexer lex, boolean blank) throws AsmException
-    {
-        Token t;
- 
-        t = lex.Expect(Token.SPACE, Token.EOL);
-        if (t.Type() == Token.EOL) return blank;
-        
-        
-        int i = lex.ExpectSymbol("ON", "YES", "Y", "OFF", "NO", "N");
-        lex.Expect(Token.EOL);
-        switch(i)
-        {
-        case 1:
-        case 2:
-        case 3:
-            return true;
-        case 4:
-        case 5:
-        case 6:
-            return false;
-        }
-        return blank; // not possible.
-    }
-    
+     */   
     private boolean ParseOnOff(__TokenIterator ti, boolean blank) throws AsmException
     {
         Token t;
@@ -1023,164 +988,114 @@ public class MPW_Parser extends Parser
      * 
      * NB - IMPORT is not yet supported.
      */
-        
-    /*
-     * TODO -- record has 2nd usage:
-     * RECORD (|EXPORT|ENTRY) 
-     * to define a data module (???)
-     */
     
-    private void ParseRecord(Lexer lex, String RecordName) throws AsmException
+    private void ParseRecord(__TokenIterator ti, Lexer lex, String RecordName) throws AsmException
     {
-        String s;
-       
+        
         Token t;
         __Expression e;
-        boolean incr = true;
-        int offset = 0;
-        String origin = null;
-        int c;
+        int type;
         
-        boolean inSeg = (fSegment != null);
+        if (RecordName == null)
+        {
+            throw new AsmException(Error.E_LABEL_REQUIRED, lex);
+        }
         
         /*
-         * todo -- error if no label name.
+         * For now, we only support:
+         * 
+         * Data Segment:
+         * RECORD [ENTRY|EXPORT]
+         * 
+         * RECORD <number>
+         * 
          */
+        
+        t = ti.Peek();
+        type = t.Type();
+        // data segment.
+        if (type == Token.SYMBOL || type == Token.EOL)
+        {
+            boolean export = false;
+            
+            if (type == Token.SYMBOL)
+            {
+                t = ti.Expect(Token.SYMBOL);
+                int i = t.ExpectSymbol("ENTRY", "EXPORT");
+                if (i == 2) export = true;
+            }
 
-       
-        /*
-         * To make life easier, we'll only support
-         * RECORD NUMBER EOL
-         * RECORD (EXPORT | ENTRY) EOL
-         * RECORD EOL
-         */
-   
-        boolean export = false;
-        boolean segment = false;
-        
-        t = lex.Expect(Token.SPACE, Token.EOL);
-        if (t.Type() == Token.EOL)
-        {
-            segment = true;
-            export = false;
-        }
-        else
-        {
-            t = lex.Expect(Token.SYMBOL, Token.NUMBER);
-            if (t.Type() == Token.SYMBOL)
-            {
-                int i = t.ExpectSymbol("EXPORT", "ENTRY");
-                switch(i)
-                {
-                case 1: // export
-                    export = true;
-                case 2: // entry
-                    segment = true;
-                }
-            }
-            else
-            {
-                offset = t.Value();
-            }
-        }
-        if (segment)
-        {
+            ti.Expect(Token.EOL);
+            
             NewSegment(RecordName, !export, true);
-            ((MPW_Lexer)lex).SetLocalLabel(fSegment.SegmentName());
+            lex.SetLocalLabel(RecordName);
             return;
         }
         
+        t = ti.Expect(Token.NUMBER);
+        ti.Expect(Token.EOL);
         
+        int start = fPC = t.Value();
         
-        /*
-        lex.Expect(Token.SPACE);
-        c = lex.Peek();
-        if (c == '{')
-        {
-            lex.NextChar();
-            t = lex.Expect(Token.SYMBOL);
-            origin = t.toString();
-            lex.Expect('}');
-        }
-        else
-        {
-            Integer v;
-            e = ParseExpression(lex);
-            v = e.Value();
-            if (v == null)
-                throw new AsmException(Error.E_EXPRESSION, lex);
-            offset = v.intValue();
-        }
-        c = lex.Peek();
-        if (c == ',')
-        {
-            lex.NextChar();
-            t = lex.Expect(Token.SYMBOL);
-            s = t.toString().toUpperCase();
-            if (s.equals("INCR") || s.equals("INCREMENT"))
-                incr = true;
-            else if (s.equals("DECR") || s.equals("DECREMENT"))
-                incr = false;
-            else throw new AsmException(Error.E_UNEXPECTED, t);
-        }
-        lex.Expect(Token.EOL);
-        */
- 
-        if (RecordName != null)
-        {
-            // allow record members to be accessed.
-            // within the record.
-            fSymbols.PushWith();
-            fSymbols.AddWith(RecordName);
-        }        
+        fSymbols.PushWith();
+        fSymbols.AddWith(RecordName);
+        
         
         Record r = new Record();
         RecordItem baseri = null;
         RecordItem lastri = null;
         
-        
-        fPC = offset;
-        
-        // TODO -- implicit WITH .. to refer to self records...
-        // need to duplicate symbol table while parsing the record?
         boolean done = false;
-        for( ;!done; )
+        
+        for(;!done;)
         {
-            String lab = null;
             MPW_Directive d;
+            String lab = null;
+            String s;
             
-            t = lex.Expect(Token.EOL, Token.SYMBOL, Token.SPACE);
-            if (t.Type() == Token.EOL) continue;
             
-            if (t.Type() == Token.SYMBOL)
+            t = lex.Expect(Token.EOL, Token.SPACE, Token.SYMBOL);
+            type = t.Type();
+            if (type == Token.EOL) continue;
+            
+            if (type == Token.SYMBOL)
             {
                 lab = t.toString();
-                lex.Expect(Token.SPACE);
+                t = lex.Expect(Token.EOL, Token.SPACE);
+                if (t.Type() == Token.EOL)
+                {
+                    fSymbols.Put(RecordName + "." + lab,
+                            new RelExpression(fPC));
+                    continue;
+                }
             }
             
             t = lex.Expect(Token.SYMBOL);
             s = t.toString().toUpperCase();
+            fOpcode = s;
             
+            ti = lex.Arguments(true);
+
             d = (MPW_Directive)fDirectives.get(s);
             if (d == null)
             {
                 throw new AsmException(Error.E_UNEXPECTED, t);
             }
+            
             switch(d)
             {
-            //TODO -- behave nice at END
             case DS:
                 {
                     RecordItem ri = new RecordItem();
                     ri.Offset = fPC;
                     ri.Name = lab;
-                    int delta = ParseRecordDS(lex, ri);
+                    int delta = ParseRecordDS(ti, ri, DotSize('w'));
                                            
                     fSymbols.Put(RecordName + "." + lab, 
                         new ConstExpression(fPC));
            
-                    if (incr) fPC += delta;
-                    else fPC -= delta;
+                    fPC += delta;                
+                    
                     if (baseri == null)
                     {
                         baseri = lastri = ri;
@@ -1189,75 +1104,51 @@ public class MPW_Parser extends Parser
                     {
                         lastri.Next = ri;
                         lastri = ri;
-                    }                  
+                    }              
                 }
-                break;
-                
-            case ORG:
-                {
-                    lex.Expect(Token.SPACE);
-                    int i = ParseIntExpression(lex);
-                    fPC = i;    
-                }
-            break;
-            
-            case ALIGN:
-                //??
                 break;
                 
             case EQU:
-                {
-                    
-                    lex.Expect(Token.SPACE);
-                    e = ParseExpression(lex);
-                    if (lab != null)
-                        fSymbols.Put(RecordName + "." + lab, e);     
-                }
-                break;
                 
+            case ORG:
+            case ALIGN:
             case SET:
                 break;
-                
+            
+            case END:
+                fEndFile = true;
             case ENDR:
                 done = true;
-                lex.Expect(Token.EOL);
+                ti.Expect(Token.EOL);
                 break;
-                
-            default: throw new AsmException(Error.E_UNEXPECTED, t);
-            }          
+            default:
+                throw new AsmException(Error.E_UNEXPECTED, t);
+            }   
         }
-        // if origin, then we need to go through and adjust the
-        // offsets.
         
         r.Children = baseri;
         r.Size = fPC;
         // create entries for them.
         AddRecordMembers(RecordName, baseri, 0, true);
         fRecords.Put(RecordName, r);
-
-        if (RecordName != null)
-            fSymbols.PopWith();
-
+        
+        fSymbols.PopWith();
     }
     
     /*
      * updates the ri.  Returns the size of the item.
      */
-    private int ParseRecordDS(Lexer lex, RecordItem ri) throws AsmException
+    private int ParseRecordDS(__TokenIterator ti, RecordItem ri, int q) throws AsmException
     {
         String s = "";
         Record r;
+            
+        int size = QualifierToInt(q);
         
-        int qualifier = 'w';
-        s = lex.LastToken().toString();
-        if (s.indexOf('.') > 0) 
-            qualifier = ctype.tolower(s.charAt(s.length() -1));
-        
-        int size = QualifierToInt(qualifier);
-        
-        lex.Expect(Token.SPACE);
-        __Expression e = ParseExpression(lex); 
-        lex.Expect(Token.EOL);
+
+        __Expression e = ParseExpression(ti); 
+        e = e.Simplify(fSymbols, false);
+        ti.Expect(Token.EOL);
         
         s = e.toString();
         if (s != null && ((r = fRecords.Get(s)) != null))
@@ -1267,7 +1158,7 @@ public class MPW_Parser extends Parser
         }
         
         Integer v = e.Value();
-        if (v == null) throw new AsmException(Error.E_EXPRESSION, lex);
+        if (v == null) throw new AsmException(Error.E_EXPRESSION);
          
         return size * v.intValue();
     }

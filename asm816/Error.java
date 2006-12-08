@@ -7,5 +7,6 @@ package asm816;
         E_ALIGN,
         E_OPCODE,
         E_MACHINE,
-        E_LABEL_REQUIRED
+        E_LABEL_REQUIRED,
+        E_FILE_NOT_FOUND
         };

@@ -1,9 +1,11 @@
 package merlin;
-import java.io.File;
-import java.io.FileOutputStream;
+
+
+import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+
 
 import expression.*;
 
@@ -73,7 +75,11 @@ public class Merlin_Parser extends Parser
         fOpcodes.put("SWA", INSTR.XBA);
     }
     
-    
+    public void ParseFile(InputStream stream)
+    {
+        Merlin_Lexer lex = new Merlin_Lexer(stream);
+        Parse(lex);
+    } 
     
     void Parse(Merlin_Lexer lex)
     {

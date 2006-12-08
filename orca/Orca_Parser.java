@@ -1,10 +1,7 @@
 package orca;
 import java.util.ArrayList;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
-
+import java.io.InputStream;
 
 import expression.*;
 
@@ -50,7 +47,7 @@ public class Orca_Parser extends Parser
     private FileOutputStream fFile;
    
 
-    public Orca_Parser(FileOutputStream outfile)
+    public Orca_Parser()
     {
         super();
         
@@ -68,10 +65,6 @@ public class Orca_Parser extends Parser
         fCase = false;
 
         fMSB = false;
-        
-        fFile = outfile;
-               
-
     }
     
     
@@ -92,27 +85,12 @@ public class Orca_Parser extends Parser
     }
  
     
-    
-    
-    
-    
-    
-    
-    private void ParseFile(String filename)
+    public void ParseFile(InputStream stream)
     {
-        // TODO -- check -I directories for the file
-        File f = new File(filename);
-        try
-        {
-            FileInputStream stream = new FileInputStream(f);
-            Orca_Lexer lex = new Orca_Lexer(stream);
-            Parse(lex);
-        }
-        catch (FileNotFoundException e)
-        {
-            System.err.print("Unable to open file " + filename);
-        }
-    }
+        Orca_Lexer lex = new Orca_Lexer(stream);
+        Parse(lex);
+    }     
+
     
     public void Parse(Orca_Lexer lex)
     {
@@ -492,7 +470,7 @@ public class Orca_Parser extends Parser
                 t = lex.Expect(Token.STRING);
                 lex.Expect(Token.EOL);
                 name = t.toString();
-                this.ParseFile(name);
+                //this.ParseFile(name);
             }
             break;
             

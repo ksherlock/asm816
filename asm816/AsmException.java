@@ -15,19 +15,30 @@ public class AsmException extends Exception
     {      
         fError = error;
         fToken = null;
+        fString = null;
         fLine = 0;
     }
     public AsmException(Error error, Lexer lex)
     {      
         fError = error;
         fToken = null;
+        fString = null;
         fLine = (lex == null) ? 0 : lex.Line();        
     }    
     public AsmException(Error error, Token t)
     {
         fError = error;
         fToken = t;
+        fString = null;
         fLine = (t == null) ? 0 : t.Line();
+    }
+    
+    public AsmException(Error error, String s)
+    {
+        fError = error;
+        fString = s;
+        fToken = null;
+        fLine = 0;
     }
     
     public void SetLine(int line)
@@ -47,6 +58,9 @@ public class AsmException extends Exception
         
         switch (fError)
         {
+        case E_FILE_NOT_FOUND:
+            s.append("File not found: " + fString);
+            break;
         case E_LABEL_REQUIRED:
             s.append("Label is required"); 
             // todo -- need to mention which directive.
@@ -97,5 +111,6 @@ public class AsmException extends Exception
     private static final long serialVersionUID = 1L;
     private Error fError;
     private Token fToken;
+    private String fString;
     private int fLine;
 }

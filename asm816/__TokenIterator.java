@@ -17,7 +17,7 @@ public abstract class __TokenIterator
 {
     abstract public Token Next();
     abstract public Token Peek();
-    abstract boolean EndOfLine();
+    abstract public boolean EndOfLine();
     
     public int PeekType()
     {

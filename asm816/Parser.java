@@ -1,4 +1,8 @@
 package asm816;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.HashMap;
 
@@ -14,6 +18,10 @@ import expression.__Expression;
 
 public abstract class Parser
 {
+    private ArrayList<File> fIncludes;
+    private File fFile;
+    protected String fOutfile;
+    
     protected HashMap<String, INSTR> fOpcodes;
     protected HashMap<String, Enum> fDirectives;
     
@@ -29,14 +37,44 @@ public abstract class Parser
     
     public Parser()
     {
-        
+        fIncludes = new ArrayList<File>();
         fOpcodes = new HashMap<String, INSTR>();
         fDirectives = new HashMap<String, Enum>();
         fImpliedAnop = null;
         
+        fFile = null;
+        fOutfile = null;
+        
         AddDirectives();
         AddOpcodes();
     }
+    
+    public void SetOutFile(String file)
+    {
+        fOutfile = file;
+    }
+    public void Reset()
+    {
+        
+    }
+
+    public void ParseFile(File f)
+    {
+        try
+        {
+            FileInputStream fis;
+            fis = new FileInputStream(f);
+            ParseFile(fis);
+        }
+        catch (FileNotFoundException fnfe)
+        {
+            AsmException e = new AsmException(Error.E_FILE_NOT_FOUND, f.getName());
+            e.print(System.err);
+        }
+    }
+
+    public abstract void ParseFile(InputStream stream);    
+    
     
     protected abstract void AddDirectives();
     protected void AddOpcodes()
@@ -48,10 +86,57 @@ public abstract class Parser
     }
     
     
-    protected void ParseLine(Lexer l) throws AsmException
+    public void SetIncludes(ArrayList<String> files)
     {
-    
+        for (String s : files)
+        {
+            File f = new File(s);
+            if (!f.exists() && f.isDirectory())
+                fIncludes.add(f);
+        }
+        
     }
+    /*
+     * Find a file.
+     * tries 
+     * 1) current directory
+     * 2) directory of the original file
+     * 3) include directories.
+     * 
+     */
+    protected File FindFile(String filename)
+    {
+        File f;        
+        
+        f = new File(filename);
+        if (f.exists()) return f;
+        
+        if (fFile != null)
+        {
+            File parentdir = fFile.getParentFile();
+            f = new File(parentdir, filename);
+            if (f.exists()) return f;
+        }
+        for (File fd : fIncludes)
+        {
+            f = new File(fd, filename);
+            if (f.exists()) return f;
+        }
+        
+        return null;
+    }
+    protected void Include(String filename) 
+    throws AsmException
+    {
+        File f;
+
+        f = FindFile(filename);
+        if (f == null)
+            throw new AsmException(Error.E_FILE_NOT_FOUND, filename);
+        
+        //...
+    }
+    
     protected boolean ParseDirective(Lexer l)
     {
         return false;

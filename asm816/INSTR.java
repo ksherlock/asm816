@@ -4,6 +4,23 @@ package asm816;
  * Mar 13, 2006 11:19:10 PM
  */
 
+/*
+ * Standard opcodes.  The following should be noted: 
+ * 
+ * The semi-standard DEA and INA are included here
+ * as synonyms for DEC/INC (implied mode only).
+ * 
+ * cop, brk, and wdm support immediate as well as absolute
+ * mode (eg pea $1234 == pea #$1234)
+ * 
+ * brk requires an argument (no 6502 implied mode)
+ * 
+ * JSR and JMP map to JSL/JML with the appropriate address
+ * mode.
+ * 
+ * mvn/mvp should be handled elsewhere.
+ */
+
 public enum INSTR
 {
     ADC,
