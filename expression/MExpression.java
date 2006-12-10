@@ -166,7 +166,8 @@ public abstract class MExpression implements __Expression
     {
         int bits = check_bits(m1, m2);
         
-        // TODO -- / 0 error?
+        if (m2.fValue == 0) return null;
+        
         switch(bits)
         {
         case 0:
@@ -179,6 +180,8 @@ public abstract class MExpression implements __Expression
     static public MExpression opMod(MExpression m1, MExpression m2)
     {
         int bits = check_bits(m1, m2);
+        
+        if (m2.fValue == 0) return null;
         
         switch(bits)
         {
@@ -246,6 +249,13 @@ public abstract class MExpression implements __Expression
         }
     }   
     
+    
+    /*
+     * Logical and, or, eor
+     * 
+     * treats input/output as boolean values
+     * returns 1/0
+     */
     static public MExpression opLAnd(MExpression m1, MExpression m2)
     {
         int bits = check_bits(m1, m2);
@@ -287,6 +297,97 @@ public abstract class MExpression implements __Expression
             return null;
         }
     }
+    
+    /*
+     * comparison functions
+     * 
+     * return 1/0 
+     */
+    static public MExpression opLE(MExpression m1, MExpression m2)
+    {
+        int bits = check_bits(m1, m2);
+        
+        switch(bits)
+        {
+        case 0:
+        case 3:
+            return new ConstExpression(m1.fValue <= m2.fValue ? 1 : 0);
+        default:
+            return null;
+        }
+    }    
+ 
+    static public MExpression opGE(MExpression m1, MExpression m2)
+    {
+        int bits = check_bits(m1, m2);
+        
+        switch(bits)
+        {
+        case 0:
+        case 3:
+            return new ConstExpression(m1.fValue >= m2.fValue ? 1 : 0);
+        default:
+            return null;
+        }
+    }
+    
+    static public MExpression opLT(MExpression m1, MExpression m2)
+    {
+        int bits = check_bits(m1, m2);
+        
+        switch(bits)
+        {
+        case 0:
+        case 3:
+            return new ConstExpression(m1.fValue < m2.fValue ? 1 : 0);
+        default:
+            return null;
+        }
+    }
+    
+    static public MExpression opGT(MExpression m1, MExpression m2)
+    {
+        int bits = check_bits(m1, m2);
+        
+        switch(bits)
+        {
+        case 0:
+        case 3:
+            return new ConstExpression(m1.fValue > m2.fValue ? 1 : 0);
+        default:
+            return null;
+        }
+    }  
+    
+    
+    static public MExpression opEQ(MExpression m1, MExpression m2)
+    {
+        int bits = check_bits(m1, m2);
+        
+        switch(bits)
+        {
+        case 0:
+        case 3:
+            return new ConstExpression(m1.fValue.intValue() == m2.fValue.intValue() ? 1 : 0);
+        default:
+            return null;
+        }
+    }  
+    
+    
+    static public MExpression opNE(MExpression m1, MExpression m2)
+    {
+        int bits = check_bits(m1, m2);
+        
+        switch(bits)
+        {
+        case 0:
+        case 3:
+            return new ConstExpression(m1.fValue.intValue() != m2.fValue.intValue() ? 1 : 0);
+        default:
+            return null;
+        }
+    }  
     
     /*
      * returns:

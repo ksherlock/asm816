@@ -1,13 +1,9 @@
 package mpw;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
+
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 
 import asm816.AddressMode;
 import asm816.AsmException;
@@ -17,6 +13,7 @@ import asm816.INSTR;
 import asm816.JunkPile;
 import asm816.Lexer;
 import asm816.Parser;
+import asm816.SymbolTable;
 import asm816.Token;
 import asm816.__TokenIterator;
 import asm816.ctype;
@@ -29,6 +26,7 @@ import omf.OMF_Eof;
 import omf.OMF_Local;
 import omf.OMF_Opcode;
 import omf.OMF_Segment;
+import omf.OMF_Using;
 
 
 /*
@@ -51,9 +49,12 @@ public class MPW_Parser extends Parser
     private boolean fMSB;
 
     private boolean fEndFile;
+    private boolean fEnd;
     
     private JunkPile fData;
     private OMF_Segment fSegment;
+    
+    private SymbolTable fWith;
     
     private ContextMap<String, Record> fRecords;
     private ContextMap<String, Boolean> fExternals;
@@ -61,7 +62,14 @@ public class MPW_Parser extends Parser
     private ContextMap<String, Boolean> fExports;
     
     private HashMap<String, ArrayList<String>> fDataSegs;
+    private HashMap<String, Macro> fMacros;
+    
     private String fOpcode;
+    private int fLine;
+    
+    private MPW_Lexer fLexer;
+    private int fSegCounter;
+    private String fSegname;
    
     private static final int STRING_PASCAL = 0;
     private static final int STRING_ASIS = 1;
@@ -71,6 +79,13 @@ public class MPW_Parser extends Parser
     public MPW_Parser()
     {
         super();
+
+    }
+    
+    public void Reset()
+    {
+        super.Reset();
+
         fPC = 0;
         fSymbols = new MPW_SymbolTable();
         fRecords = new ContextMap<String, Record>();
@@ -79,7 +94,7 @@ public class MPW_Parser extends Parser
         fDataSegs = new HashMap<String, ArrayList<String>>();
         
         fExports = new ContextMap<String, Boolean>();
-        
+        fMacros = new HashMap<String, Macro>();
         
         fData = null;
         fSegment = null;
@@ -89,8 +104,17 @@ public class MPW_Parser extends Parser
         fMachine = INSTR.m65816;
         
         fEndFile = false;  
+        fEnd = false;
         fOpcode = "";
+        fLexer = null;
+        fSegCounter = 0;
+        fSegname = "";
+        fLine = 0;
+        
+        fWith = null;
+        
     }
+    
     
     public void ParseFile(InputStream stream)
     {
@@ -98,17 +122,24 @@ public class MPW_Parser extends Parser
         Parse(lex);
     }   
     
-    public void Parse(Lexer lex)
+    private void Parse(MPW_Lexer lex)
     {
+        MPW_Lexer oLexer = fLexer;
+        
         fEndFile = false;
+        fLexer = lex;
         lex.SetCase(fCase);
         for (;;)
-        {
+        {           
             ParseLine(lex);
             if (fEndFile) break;
         }
         //fSymbols.PrintTable(System.out);
         
+        if (fEndFile && !fEnd)
+            fEndFile = false;
+        
+        fLexer = oLexer;
     }
     
     protected void AddDirectives()
@@ -119,10 +150,14 @@ public class MPW_Parser extends Parser
                 fDirectives.put(i.name(), i);
         fDirectives.remove("IMPLIED_ANOP");
         
+        
+        //synonyms
         fDirectives.put("ENDP", MPW_Directive.ENDPROC);
         fDirectives.put("FUNCTION", MPW_Directive.PROC);
         fDirectives.put("ENDFUNCTION", MPW_Directive.ENDPROC);
         fDirectives.put("ENDF", MPW_Directive.ENDPROC);
+        fDirectives.put("ENDM", MPW_Directive.MEND);
+        
         
         // need to do these since '.' is a valid symbol char.
         fDirectives.put("DC.B", MPW_Directive.DC);
@@ -178,6 +213,7 @@ public class MPW_Parser extends Parser
         
         fData = null;
         fSegment = null;
+        fWith = null;
     }
     
     private void NewSegment(String lab, boolean priv, boolean data)
@@ -191,17 +227,21 @@ public class MPW_Parser extends Parser
         if (priv) fSegment.SetAttributes(OMF.KIND_PRIVATE);
         fSegment.SetKind(data ? OMF.KIND_DATA : OMF.KIND_CODE);
         
+        fSegment.SetSegmentNumber(++fSegCounter);
+        fSegment.SetLoadName(fSegname);
         fSymbols.Push(); 
         fRecords.Push();
         fExternals.Push();
         fExports.Push(); 
-        
-        
+                
         fSymbols.Put(fSegment.SegmentName(), new RelExpression(0)); 
 
+        fLexer.SetLocalLabel(lab);        
+        
         // reset fStringMode?
         fMSB = false;
         fSymbols.ClearWith(); // shouldn't be necessary
+        fWith = new SymbolTable();
     }
     
     protected void ParseSegment(String lab, __TokenIterator ti) throws AsmException 
@@ -240,20 +280,18 @@ public class MPW_Parser extends Parser
     // when an expression is originally parsed.  fSymbols is then
     // a normal SymbolTable.
     
+    /*
+     * TODO -- currently, 
+     *  brx label
+     * will create a RELEXPR record, even if label is known.
+     * While not a problem (the linker should deal with it 
+     * correctly), we could handle it here by converting the 
+     * relative expression to a constant expression and doing
+     * the branch math.
+     * 
+     */
     protected void Reduce()
     {
-        
-        FileOutputStream outf = null;
-        try
-        {
-            outf = new FileOutputStream("mpwout.o");
-        }
-        catch (FileNotFoundException e1)
-        {
-            // TODO Auto-generated catch block
-            e1.printStackTrace();
-        } 
-        
         ArrayList ops = fData.GetArrayList();
         fData = new JunkPile();
 
@@ -320,114 +358,157 @@ public class MPW_Parser extends Parser
             fSegment.AddOpcode((OMF_Opcode)op);
         }
         fSegment.AddOpcode(new OMF_Eof());
-        fSegment.Save(outf);
+        
+        
+        if (fOutfile != null)
+            fSegment.Save(fOutfile);
     }
 
-    protected void ParseLine(Lexer lex)
+    
+    private Line GetLine(Lexer lex, Line l) throws AsmException
     {
+        if (l == null) l = new Line();
+        
         Token t;
         String s;
-        String lab = null;
-        
-        boolean inSeg = fSegment != null;
-        boolean inData = inSeg ? fSegment.Kind() == OMF.KIND_DATA : false;
-        fPC = fData == null ? 0 : fData.Size();
+        int type;
         
         
+        t = lex.Expect(Token.EOF, Token.EOL, 
+                Token.SPACE, Token.SYMBOL);
+        
+        type = t.Type();
+        
+        if (type == Token.EOL)
+            return null;
+        if (type == Token.EOF)
+        {
+            fEndFile = true;
+            return null;
+        }
+        if (type == Token.SYMBOL)
+        {
+            l.lab = t.toString();
+            t = lex.Expect(Token.SPACE, Token.EOL);
+            
+            if (t.Type() == Token.EOL)
+                return l;
+        }
+        t = lex.Expect(Token.SYMBOL);
+        
+        l.opcode = t.toString().toUpperCase();
+        
+        l.operand = lex.Arguments(true);
+
+        return l;
+    }
+    
+    protected void ParseLine(Lexer lex)
+    {
+        
+        fLine = lex.Line();
         
         try
         {         
-            t = lex.Expect(Token.SPACE, Token.EOF, Token.EOL, Token.SYMBOL);
 
-            int type = t.Type();
+            Line l = GetLine(lex, null);
             
-            if (type == Token.EOF)
-            {
-                // TODO -- should warn if not currently inSeg.
-                fEndFile = true;
-                return;
-            }
-            if (type == Token.EOL)
-            {
-                return;
-            }
-            if (type == Token.SYMBOL)
-            {
-                Token oldt = t;
-                lab = t.toString();
-                // check for '@' label
-                if (lab.indexOf('@') >= 0)
-                {
-                    // TODO -- warn if not in a segment.
-                }
-                else if (inSeg)
-                {
-                    ((MPW_Lexer)lex).SetLocalLabel(lab);
-                }
-                t = lex.Expect(Token.EOL, Token.SPACE);
-                if (t.Type() == Token.EOL)
-                {
-                    boolean tf = ParseDirective(lab, lex, MPW_Directive.IMPLIED_ANOP);
-                    if (!tf)
-                    {
-                        throw new AsmException(Error.E_UNEXPECTED, oldt);
-                    }
-                    return;
-                }
-            }
-
-            t = lex.Expect(Token.SYMBOL);
-            s = t.toString().toUpperCase();
-            fOpcode = s;
-
-            
-            MPW_Directive dir = (MPW_Directive)fDirectives.get(s);
-            if (dir != null)
-            {
-                boolean tf = ParseDirective(lab, lex, dir);
-                if (!tf)
-                    throw new AsmException(Error.E_UNEXPECTED, t);
-               return;
-            }
-            
-            if (inSeg && !inData)
-            {
-                INSTR instr = fOpcodes.get(s);
-                if (instr != null)
-                {
-                    ParseInstruction(lab, lex, instr);
-                    
-                    return;
-                }
-                
-                // TODO -- macro support.
-                
-            }
-            throw new AsmException(Error.E_UNEXPECTED, t);
-    
+            if (l == null) return;
+            DoLine(l.lab, l.opcode, l.operand);
         }
         catch (AsmException error)
         {
+            error.SetLine(fLine);
             error.print(System.err);
             lex.SkipLine();
         }      
     }
+    
+    void DoLine(String lab, String opcode, __TokenIterator ti)
+    throws AsmException
+    {
+        boolean inSeg = fSegment != null;
+        boolean inData = inSeg ? fSegment.Kind() == OMF.KIND_DATA : false;
+        fPC = fData == null ? 0 : fData.Size();
+                
+        fOpcode = opcode;
+        MPW_Directive d;
+        if (opcode == null)
+        {
+            d = MPW_Directive.IMPLIED_ANOP;
+        }
+        else d = (MPW_Directive)fDirectives.get(opcode);
+        
+        if (d != null)
+        {
+            boolean tf = ParseDirective(lab, d, ti);
+            if (!tf)
+                throw new AsmException(Error.E_UNEXPECTED, opcode);
+           return;
+        }
+                    
+        if (inSeg && !inData)
+        {
+            INSTR instr = fOpcodes.get(opcode);
+            if (instr != null)
+            {
+                ParseInstruction(lab, instr, ti);
+                
+                return;
+            }
+            
+            Macro m;
+            m = fMacros.get(opcode);
+            if (m != null)
+            {
+                ExpandMacro(lab, m, ti);
+                return;
+            }
+            
+        }
+        throw new AsmException(Error.E_UNEXPECTED, opcode);
+        
+    }
+    
+    public void ExpandMacro(String lab, Macro m, __TokenIterator ti)
+        throws AsmException
+    {
+        MacroLine ml;
+        
+        // TODO -- prevent infinite loops.
+        
+        //TODO -- if lab != null && macro doesn't have a 
+        // lab parm, do the label before the macro.
+        
+        // TODO -- setup local variables and substitute
+        ml = m.line;
+        
+        while (ml != null)
+        {
+            // TODO -- check if opcode is macro command
+            // TODO -- label replacement for @/&
+            // TODO -- variable replacement in strings.
+            ml.operand.Reset();
+            DoLine(ml.lab, ml.opcode, ml.operand);
+            
+            ml = ml.next;
+        }   
+    }
+    
     
     /*
      * TODO -- find a more OOP way to do this via a directive
      * class & inheritance?
      * 
      */
-    protected boolean ParseDirective(String lab, Lexer lex, Enum d) throws AsmException
+    protected boolean ParseDirective(String lab, Enum d, __TokenIterator ti) throws AsmException
     {
         boolean inSeg = fSegment != null;
         boolean inData = inSeg ? fSegment.Kind() == OMF.KIND_DATA : false;
 
         __Expression e = null;
         MPW_Directive dir = (MPW_Directive)d;
-        
-        __TokenIterator ti = lex.Arguments(true);
-        
+              
         
         // add a label except for these:
         if (inSeg && lab != null)
@@ -439,7 +520,9 @@ public class MPW_Parser extends Parser
             case PROC:
             case ENDPROC:
             case RECORD:
-            case ENDR:            
+            case ENDR:
+            case MACRO:
+            case MEND:
                 break;
                 
                 /* TODO -- once ALIGN is figured out, 
@@ -454,6 +537,32 @@ public class MPW_Parser extends Parser
         
         switch(dir)
         {
+        case LONGA:
+            if (fMachine != INSTR.m65816) return false;
+            fM = ParseOnOff(ti, true);
+            break;
+        case LONGI:
+            if (fMachine != INSTR.m65816) return false;
+            fX = ParseOnOff(ti, true);
+            break;
+        
+        case SEG:
+            {
+                Token t = ti.Expect(Token.EOL, Token.STRING);
+                if (t.Type() == Token.STRING)
+                {
+                    String s = t.toString();
+                    if (inSeg)
+                        fSegment.SetLoadName(s);
+                    else
+                        fSegname = s;
+                    ti.Expect(Token.EOL);
+                }
+                
+                else fSegname = "";
+            }
+            break;
+            
         case IMPLIED_ANOP:
             // EOL already processed.
             if (!inSeg) return false;
@@ -486,10 +595,7 @@ public class MPW_Parser extends Parser
         case PROC:
             if (inSeg) EndSegment(null);
             ParseSegment(lab, ti);
-            // TODO -- find a better way....
-            lex.SetLocalLabel(lab);
-
-                
+            
             lab = null;
             break;
             
@@ -508,20 +614,25 @@ public class MPW_Parser extends Parser
                 EndSegment(lab);
                 lab = null;                
             }
+            fEnd = true;
             fEndFile = true;
             break;
             
         case RECORD:
             if (inData)
                 EndSegment(null);
-            ParseRecord(ti, lex, lab);
+            ParseRecord(ti, lab);
             lab = null;
             break;
             
+        case MACRO:
+            // if in data give error?
+            ParseMacro(ti);
+            break;
         
         case CASE:
             fCase = ParseOnOff(ti, false);
-            lex.SetCase(fCase);
+            fLexer.SetCase(fCase);
             break;
         
         case DS:
@@ -609,7 +720,8 @@ public class MPW_Parser extends Parser
             
         case ENDWITH:
             if (!inSeg) return false;
-            fSymbols.PopWith();
+            fWith.Pop();
+            //fSymbols.PopWith();
             ti.Expect(Token.EOL);
             break;
             
@@ -621,6 +733,10 @@ public class MPW_Parser extends Parser
             ParseExport(ti);
             break;
             
+            
+        case INCLUDE:
+            ParseInclude(ti);
+            break;
             
         default:
             return false;
@@ -635,6 +751,8 @@ public class MPW_Parser extends Parser
         
         OMF_Opcode op = null;
         
+        fLexer.SetLocalLabel(lab);
+        
         if (fExports.Get(lab, false) != null)
             op = new OMF_Local(OMF.OMF_GLOBAL, lab, 0, 'N', false);
        
@@ -646,7 +764,8 @@ public class MPW_Parser extends Parser
         fData.add(op);
     }
     
-    protected boolean ParseInstruction(String lab, Lexer lex, INSTR instr) throws AsmException
+    protected boolean ParseInstruction(String lab, INSTR instr, __TokenIterator ti) 
+    throws AsmException
     {
         int opcode = 0x00;
         int size;
@@ -659,6 +778,8 @@ public class MPW_Parser extends Parser
 
         boolean check_a = false;
         
+        //__TokenIterator ti = lex.Arguments(true);
+        
         // special case mvn/mvp
         switch (instr)
         {
@@ -667,11 +788,12 @@ public class MPW_Parser extends Parser
             {   
                 __Expression e1, e2;
                 Expression ex1, ex2;
-                lex.Expect(Token.SPACE);
-                e1 = ExpressionParser.Parse(lex, fPC);
-                lex.Expect(',');
-                e2 = ExpressionParser.Parse(lex, fPC);
-    
+                
+                e1 = ParseExpression(ti);
+                ti.Expect(',');
+                e2 = ParseExpression(ti);
+                ti.Expect(Token.EOL);
+
                 e1 = e1.Simplify(fSymbols, false);
                 e2 = e2.Simplify(fSymbols, false);
                 switch (instr)
@@ -710,7 +832,7 @@ public class MPW_Parser extends Parser
             
         default:
             
-            operand oper = ParseOperand(lex);
+            operand oper = ParseOperand(ti);
             AddressMode mode = oper.mode;
             __Expression e = oper.expression;
             if (e != null)
@@ -783,7 +905,7 @@ public class MPW_Parser extends Parser
                 opcode = instr.opcode(mode, fMachine);
             if (opcode == -1)
             {
-                throw new AsmException(Error.E_OPCODE);
+                throw new AsmException(Error.E_OPCODE, instr.toString());
             }
             size = INSTR.Size(opcode, fM, fX);
 
@@ -955,7 +1077,8 @@ public class MPW_Parser extends Parser
                 fData.add(new OMF_DS(r.Size));
                 
                 if (lab != null)
-                {                    
+                {        
+                    fRecords.Put(lab, r);
                     AddRecordMembers(lab, r.Children, fPC, false);
                 }
                 
@@ -989,16 +1112,18 @@ public class MPW_Parser extends Parser
      * NB - IMPORT is not yet supported.
      */
     
-    private void ParseRecord(__TokenIterator ti, Lexer lex, String RecordName) throws AsmException
+    private void ParseRecord(__TokenIterator ti, String RecordName) throws AsmException
     {
         
         Token t;
         __Expression e;
         int type;
         
+        Lexer lex = fLexer;
+        
         if (RecordName == null)
         {
-            throw new AsmException(Error.E_LABEL_REQUIRED, lex);
+            throw new AsmException(Error.E_LABEL_REQUIRED);
         }
         
         /*
@@ -1028,7 +1153,6 @@ public class MPW_Parser extends Parser
             ti.Expect(Token.EOL);
             
             NewSegment(RecordName, !export, true);
-            lex.SetLocalLabel(RecordName);
             return;
         }
         
@@ -1116,6 +1240,7 @@ public class MPW_Parser extends Parser
                 break;
             
             case END:
+                fEnd = true;
                 fEndFile = true;
             case ENDR:
                 done = true;
@@ -1163,6 +1288,88 @@ public class MPW_Parser extends Parser
         return size * v.intValue();
     }
 
+    // TODO -- disallow if in a macro.
+    private void ParseMacro(__TokenIterator ti) 
+        throws AsmException
+    {
+        Macro m = new Macro();
+        MacroLine first;
+        MacroLine last;
+        MacroLine ml;
+        String name = null;
+        
+        ti.Expect(Token.EOL);
+        
+        // TODO -- parameters and stuff...
+        
+        first = last = null;
+        boolean done = false;
+        for(int i = 0;!done;)
+        {
+            ml = new MacroLine();
+            if (GetLine(fLexer, ml) == null)
+            {
+                // error
+                if (fEnd) return;
+                continue;
+            }
+            i++;
+            
+            // todo -- label[0] must be @ or &
+            String s = ml.opcode;
+            if (s != null)
+            {
+                MPW_Directive d;
+                d = (MPW_Directive)fDirectives.get(s);
+                if (d != null)
+                    switch(d)
+                    {
+                    case MEND:
+                        ml.operand = null;
+                        ml.opcode = null;
+                        done = true;
+                        break;
+                    case MACRO:
+                        throw new AsmException(Error.E_UNEXPECTED, s);
+
+                    }
+            }
+            // header
+            if (i == 1)
+            {
+                if (s == null)
+                    throw new AsmException(Error.E_MACRO_NAME, "");
+                
+                if (fDirectives.get(s) != null 
+                        || fOpcodes.get(s) != null)
+                    throw new AsmException(Error.E_MACRO_NAME, name);
+                
+                // todo -- qualifier/arguments
+                m.lab = ml.lab;
+                name = s;
+                
+                continue;
+            }
+            // if this was from a MEND line, it 
+            // may be empty.
+            if (ml.lab != null || ml.opcode != null)
+            {
+                if (first == null)
+                {
+                    first = last = ml;                
+                }
+                else
+                {
+                    last.next = ml;
+                    last = ml;
+                }
+            }
+            
+        }
+        m.line = first;
+        fMacros.put(name, m);
+    }
+    
     
     /*
      * EXPORT symbol[,symbol]*
@@ -1204,12 +1411,62 @@ public class MPW_Parser extends Parser
     private void ParseWith(__TokenIterator ti) throws AsmException
     {
         
-        fSymbols.PushWith();
+        //fSymbols.PushWith();
+        fWith.Push();
         
         ArrayList<Token> tokens = ti.toList(Token.SYMBOL);
        
         for (Token t : tokens)
+        {
+            ArrayList<String> al;
+            String s = t.toString();
+            
+            // if it's a data segment, then add a USING
+            // record and import the externals.
+            if ((al = fDataSegs.get(s)) != null)
+            {
+                for (String s2 : al)
+                {
+                    fExternals.Put(s2, Boolean.TRUE);
+                }
+                fData.add(new OMF_Using(s));
+                continue;
+            }
+            
+            // otherwise, add the data to fWith.
+            // TODO check for xx.xxx
+            
+            Record r = fRecords.Get(s);
+            if (r == null)
+            {
+                System.err.printf("%1$s : unknown record\n",
+                        s);
+                continue;
+            }
+            
+            AddRecord(fWith, r, s);          
+        }
+        
+        
+        //fWith.PrintTable(System.out);
+        
+        /*
+        for (Token t : tokens)
             fSymbols.AddWith(t.toString());
+        */
+    }
+
+    private void ParseInclude(__TokenIterator ti) throws AsmException
+    {
+        Token t;
+        String s;
+        t = ti.Expect(Token.STRING);
+        ti.Expect(Token.EOL);
+        
+        s = t.toString();
+        
+        Include(s);
+        
     }
     
     
@@ -1224,7 +1481,9 @@ public class MPW_Parser extends Parser
     
     protected ComplexExpression ParseExpression(__TokenIterator iter) throws AsmException
     {       
-        return MPWExpression.Parse(iter, fPC);   
+        ComplexExpression exp =  MPWExpression.Parse(iter, fPC);
+        if (fWith != null) exp.Remap(fWith);
+        return exp;
     }
     
     /*
@@ -1242,16 +1501,19 @@ public class MPW_Parser extends Parser
         Integer v = e.Value();
         
         if (v == null)
-            throw new AsmException(Error.E_EXPRESSION, lex);
+            throw new AsmException(Error.E_EXPRESSION);
         
         return v.intValue();
     }
+    
     private int ParseIntExpression(__TokenIterator ti) throws AsmException
-    {        
+    {      
+        ComplexExpression ce;
         __Expression e;
         
-        e = MPWExpression.Parse(ti, fPC); 
-        e = e.Simplify(fSymbols, true);
+        ce = MPWExpression.Parse(ti, fPC); 
+        if (fWith != null) ce.Remap(fWith);
+        e = ce.Simplify(fSymbols, true);
         Integer v = e.Value();
         
         if (v == null)
@@ -1367,6 +1629,34 @@ public class MPW_Parser extends Parser
         return data;
     }
     
+    
+    private void AddRecord(SymbolTable st, Record r, String as)
+    {
+        AddRecord(st, r.Children, as, "");   
+    }
+    // add record members to the symboltable.
+    private void AddRecord(SymbolTable st, RecordItem r, String path, String prefix)
+    {
+        while (r != null)
+        {
+            __Expression e;
+            // TODO -- any reason NOT to put the actual value?
+            /*
+            e = new SymbolExpression(path + "." + r.Name);
+            
+            */
+            e = fSymbols.Get(path + "." + r.Name);
+            
+            st.Put(prefix + r.Name, e,true);
+            
+            if (r.Children != null)
+                AddRecord(st, r.Children, path + "." + r.Name,  prefix + r.Name + ".");
+            
+            r = r.Next;
+        }
+        
+    }
+    
     private void AddRecordMembers(String basename, RecordItem r, 
             int pc, boolean absolute)
     {
@@ -1412,5 +1702,42 @@ public class MPW_Parser extends Parser
     }
     
 
+    class Line
+    {
+        public Line()
+        {
+            lab = null;
+            opcode = null;
+            operand = null;
+        }
+        public String lab;
+        public String opcode;
+        public __TokenIterator operand;
+    }
     
+    class MacroLine extends Line
+    {
+        public MacroLine()
+        {
+            super();
+            next = null;
+        }
+        public MacroLine next;
+    }
+    
+    class Macro
+    {
+        public Macro()
+        {
+            lab = null;
+            qualifier = null;
+            args = null;
+            line = null;
+        }
+        
+        String lab;
+        String qualifier;
+        ArrayList<String> args;
+        MacroLine line;
+    }
 }

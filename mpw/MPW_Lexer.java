@@ -131,9 +131,11 @@ public class MPW_Lexer extends Lexer
                 return new Token(Token.MOD);
             }
             return new Token(c);
+            
+        /* interferes with |absolute mode
         case '|':
             return new Token(Token.LOGICAL_OR);
-            
+        */    
             /*
              * hexadecimal number.
              */

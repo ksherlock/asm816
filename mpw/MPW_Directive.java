@@ -92,7 +92,6 @@ public enum MPW_Directive
      * Macros
      */
     MACRO,
-    ENDM,
     MEND,
     
     /*

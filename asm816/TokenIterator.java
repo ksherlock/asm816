@@ -19,7 +19,10 @@ public class TokenIterator extends __TokenIterator
         fList = list;
         fIndex = 0;
     }
-    
+    public void Reset()
+    {
+        fIndex = 0;
+    }
     public boolean EndOfLine()
     {
         return fList == null ? true : fIndex >= fList.size();

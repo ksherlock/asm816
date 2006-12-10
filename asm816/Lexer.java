@@ -93,7 +93,7 @@ public abstract class Lexer
         Token t = Expect(Token.EOL, Token.SPACE);
         int type = t.Type();
         // null or a blank Array?
-        if (type == Token.EOL) return new TokenIterator();
+        if (type == Token.EOL) return new NullTokenIterator();
         
         for(;;)
         {

@@ -2,6 +2,7 @@ package asm816;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -20,7 +21,7 @@ public abstract class Parser
 {
     private ArrayList<File> fIncludes;
     private File fFile;
-    protected String fOutfile;
+    protected FileOutputStream fOutfile;
     
     protected HashMap<String, INSTR> fOpcodes;
     protected HashMap<String, Enum> fDirectives;
@@ -37,13 +38,12 @@ public abstract class Parser
     
     public Parser()
     {
+        Reset();
+        
         fIncludes = new ArrayList<File>();
         fOpcodes = new HashMap<String, INSTR>();
         fDirectives = new HashMap<String, Enum>();
         fImpliedAnop = null;
-        
-        fFile = null;
-        fOutfile = null;
         
         AddDirectives();
         AddOpcodes();
@@ -51,11 +51,20 @@ public abstract class Parser
     
     public void SetOutFile(String file)
     {
-        fOutfile = file;
+        try
+        {
+            fOutfile = new FileOutputStream(file);
+        }
+        catch (FileNotFoundException e)
+        {
+            fOutfile = null;
+        }
     }
     public void Reset()
     {
-        
+        fFile = null;
+        fOutfile = null; 
+        fPC = 0;
     }
 
     public void ParseFile(File f)
@@ -91,7 +100,7 @@ public abstract class Parser
         for (String s : files)
         {
             File f = new File(s);
-            if (!f.exists() && f.isDirectory())
+            if (f.exists() && f.isDirectory())
                 fIncludes.add(f);
         }
         
@@ -134,7 +143,7 @@ public abstract class Parser
         if (f == null)
             throw new AsmException(Error.E_FILE_NOT_FOUND, filename);
         
-        //...
+        ParseFile(f);
     }
     
     protected boolean ParseDirective(Lexer l)

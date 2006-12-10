@@ -69,7 +69,8 @@ public class MPWExpression
             op = -1;
             switch(t.Type())
             {
-            case Token.LOGICAL_OR:
+            //case Token.LOGICAL_OR:
+            case '|':                
                 op = OMF_Expression.EXPR_LOR;
                 break;
             case Token.LOGICAL_EOR:

@@ -12,6 +12,16 @@ import omf.OMF_Expression;
 import asm816.Stack;
 import asm816.SymbolTable;
 
+/*
+ * a complex expression is an RPN array/stack of Integers 
+ * (encapsulating OMF_Expression opcodes), 
+ * SymbolExpressions, and MExpressions.
+ * 
+ * The Simplify method will perform any math operations
+ * and return a SymbolExpression or MExpression if possible
+ */
+
+
 public class ComplexExpression implements __Expression
 {
     public ComplexExpression()
@@ -70,7 +80,24 @@ public class ComplexExpression implements __Expression
         fData.add(new Integer(OMF_Expression.EXPR_SHIFT));
     }
     
-
+    
+    // rename any SymbolExpressions but do not simplify.
+    @SuppressWarnings("unchecked")
+    public void Remap(SymbolTable st)
+    {
+        if (st == null) return;
+        
+        int len = fData.size();
+        for (int i = 0; i < len; i++)
+        {
+            Object o = fData.get(i);
+            if (o instanceof SymbolExpression)
+            {
+                SymbolExpression s = (SymbolExpression)o;
+                fData.set(i, s.Simplify(st, false));
+            }
+        }
+    }
 
     @SuppressWarnings("unchecked")
     public __Expression Simplify(SymbolTable st, boolean deep)
@@ -110,75 +137,8 @@ public class ComplexExpression implements __Expression
                 Integer i = (Integer)o;
                 int op = i.intValue();
                 
-                switch(op)
-                {
-                    /*
-                     * unary minus.
-                     */
-                case OMF_Expression.EXPR_NEG:
-                    if (!doNegate(stack))
-                            stack.push(o);
-                    break;
-                    
-                case OMF_Expression.EXPR_BNOT:
-                    if (!doNot(stack))
-                        stack.push(o);
-                    break;
-                    
-                case OMF_Expression.EXPR_LNOT:
-                    if (!doLNot(stack))
-                        stack.push(o);
-                    break; 
-                    
-                    
-                    
-                case OMF_Expression.EXPR_ADD:
-                    if (!doAdd(stack))
-                        stack.push(o);
-                    break;
-
-                case OMF_Expression.EXPR_SUB:
-                    if (!doSub(stack))
-                        stack.push(o);
-                    break;
-                    
-                case OMF_Expression.EXPR_MUL:
-                    if (!doMul(stack))
-                        stack.push(o);
-                    break;
-                    
-                case OMF_Expression.EXPR_DIV:
-                    if (!doDiv(stack))
-                        stack.push(o);
-                    break;
-                    
-                case OMF_Expression.EXPR_MOD:
-                    if (!doMod(stack))
-                        stack.push(o);
-                    break;
-                    
-                case OMF_Expression.EXPR_SHIFT:
-                    if (!doShift(stack))
-                        stack.push(o);
-                    break;
-
-                case OMF_Expression.EXPR_LAND:
-                    if (!doLAnd(stack))
-                        stack.push(o);
-                    break;                    
- 
-                case OMF_Expression.EXPR_LOR:
-                    if (!doLOr(stack))
-                        stack.push(o);
-                    break;                     
-                case OMF_Expression.EXPR_LEOR:
-                    if (!doLEor(stack))
-                        stack.push(o);
-                    break;
-                    
-                default:
-                    System.out.println("Not yet implemented " + op);
-                }   
+                if (!doOp(op, stack))
+                    stack.push(o);  
             }
         } // for (o : Objects)       
 
@@ -198,266 +158,122 @@ public class ComplexExpression implements __Expression
  
     
     /*
-     * negate the top item.  returns true if processed, 
-     * false if not processed.
+     * verify the arguments are ok and dispatch.
+     * 
+     *  returns true (and updates the stack)
+     *  if we handled it, false if not.
      */
     @SuppressWarnings("unchecked")
-    private static boolean doNegate(Stack stack)
+    private static boolean doOp(int op, Stack stack)
     {
         int top = stack.size();
         
-        Object o = (stack.get(top - 1));
-        if (o instanceof MExpression)
+        if (op == OMF_Expression.EXPR_NEG 
+                || op == OMF_Expression.EXPR_BNOT
+                || op == OMF_Expression.EXPR_LNOT)
         {
-            MExpression copy = MExpression.opNegate((MExpression)o);
+            Object o = (stack.get(top - 1));
+            if (!(o instanceof MExpression)) return false;
+
+            MExpression m = (MExpression)o;
+            MExpression copy = null;
+            
+            if (op == OMF_Expression.EXPR_NEG)
+                copy = MExpression.opNegate(m);
+            else if (op == OMF_Expression.EXPR_BNOT)
+                copy = MExpression.opNot(m);
+            else if (op == OMF_Expression.EXPR_LNOT)
+                copy = MExpression.opLNot(m);
+            
             if (copy != null)
             {
                 stack.set(top -1, copy);
                 return true;
-            }
+            }           
+            return false;
+            
         }
+        
+        Object o1, o2;
+        MExpression m1, m2;
+        
+        /* these are the correct order */
+        o1 = stack.get(top - 2);
+        o2 = stack.get(top - 1);
+        
+        if (!(o1 instanceof MExpression)) return false;
+        if (!(o2 instanceof MExpression)) return false;
+        
+        m1 = (MExpression)o1;
+        m2 = (MExpression)o2;
+        MExpression copy = null;
+        
+        switch (op)
+        {
+        case  OMF_Expression.EXPR_ADD:
+            copy = MExpression.opAdd(m1, m2);
+            break;
+        case  OMF_Expression.EXPR_SUB:
+            copy = MExpression.opSub(m1, m2);
+            break;
+        case  OMF_Expression.EXPR_MUL:
+            copy = MExpression.opMul(m1, m2);
+            break;
+        case  OMF_Expression.EXPR_DIV:
+            copy = MExpression.opDiv(m1, m2);
+            break;
+        case  OMF_Expression.EXPR_MOD:
+            copy = MExpression.opMod(m1, m2);
+            break;
+        case  OMF_Expression.EXPR_SHIFT:
+            copy = MExpression.opShift(m1, m2);
+            break;
+        case  OMF_Expression.EXPR_LAND:
+            copy = MExpression.opLAnd(m1, m2);
+            break;
+        case  OMF_Expression.EXPR_LOR:
+            copy = MExpression.opLOr(m1, m2);
+            break;
+        case  OMF_Expression.EXPR_LEOR:
+            copy = MExpression.opLEor(m1, m2);
+            break;
+        case  OMF_Expression.EXPR_LE:
+            copy = MExpression.opLE(m1, m2);
+            break;
+        case  OMF_Expression.EXPR_GE:
+            copy = MExpression.opGE(m1, m2);
+            break;
+        case  OMF_Expression.EXPR_NE:
+            copy = MExpression.opNE(m1, m2);
+            break;
+        case  OMF_Expression.EXPR_LT:
+            copy = MExpression.opLT(m1, m2);
+            break;
+        case  OMF_Expression.EXPR_GT:
+            copy = MExpression.opGT(m1, m2);
+            break;
+        case  OMF_Expression.EXPR_EQ:
+            copy = MExpression.opEQ(m1, m2);
+            break;
+        case  OMF_Expression.EXPR_BAND:
+            copy = MExpression.opAnd(m1, m2);
+            break;
+        case  OMF_Expression.EXPR_BOR:
+            copy = MExpression.opOr(m1, m2);
+            break;
+        case  OMF_Expression.EXPR_BEOR:
+            copy = MExpression.opEor(m1, m2);
+            break;
+        }
+        
+        if (copy != null)
+        {
+            stack.remove(top - 1);
+            stack.set(top - 2, copy);
+            return true;
+        }
+        
         return false;
-    }
-
-    @SuppressWarnings("unchecked")
-    private static boolean doNot(Stack stack)
-    {
-        int top = stack.size();
-        
-        Object o = (stack.get(top - 1));
-        if (o instanceof MExpression)
-        {
-            MExpression copy = MExpression.opNot((MExpression)o);
-            if (copy != null)
-            {
-                stack.set(top -1, copy);
-                return true;
-            }
-        }
-        return false;
-    }
-    
-    @SuppressWarnings("unchecked")
-    private static boolean doLNot(Stack stack)
-    {
-        int top = stack.size();
-        
-        Object o = (stack.get(top - 1));
-        if (o instanceof MExpression)
-        {
-            MExpression copy = MExpression.opLNot((MExpression)o);
-            if (copy != null)
-            {
-                stack.set(top -1, copy);
-                return true;
-            }
-        }
-        return false;
-    }    
-    @SuppressWarnings("unchecked")
-    private static boolean doAdd(Stack stack)
-    {
-        int top = stack.size();
-        
-        Object o1, o2;
-        o1 = stack.get(top - 2);
-        o2 = stack.get(top - 1);
-    
-        if (o1 instanceof MExpression && o2 instanceof MExpression)
-        {
-            MExpression copy = MExpression
-                .opAdd((MExpression)o1,(MExpression)o2);
-            if (copy != null)
-            {
-                stack.remove(top - 1);
-                stack.set(top - 2, copy);
-                return true;
-            }
-        }
-        return false;     
-    }
-
-    @SuppressWarnings("unchecked")
-    private static boolean doSub(Stack stack)
-    {
-        int top = stack.size();
-        
-        Object o1, o2;
-        o1 = stack.get(top - 2);
-        o2 = stack.get(top - 1);
-    
-        if (o1 instanceof MExpression && o2 instanceof MExpression)
-        {
-            MExpression copy = MExpression
-                .opSub((MExpression)o1,(MExpression)o2);
-            if (copy != null)
-            {
-                stack.remove(top - 1);
-                stack.set(top - 2, copy);
-                return true;
-            }
-        }
-        return false;     
-    }
-    @SuppressWarnings("unchecked")
-    private static boolean doMul(Stack stack)
-    {
-        int top = stack.size();
-        
-        Object o1, o2;
-        o1 = stack.get(top - 2);
-        o2 = stack.get(top - 1);
-    
-        if (o1 instanceof MExpression && o2 instanceof MExpression)
-        {
-            MExpression copy = MExpression
-                .opMul((MExpression)o1,(MExpression)o2);
-            if (copy != null)
-            {
-                stack.remove(top - 1);
-                stack.set(top - 2, copy);
-                return true;
-            }
-        }
-        return false;     
-    }
-
-    @SuppressWarnings("unchecked")
-    private static boolean doDiv(Stack stack)
-    {
-        int top = stack.size();
-        
-        Object o1, o2;
-        o1 = stack.get(top - 2);
-        o2 = stack.get(top - 1);
-    
-        if (o1 instanceof MExpression && o2 instanceof MExpression)
-        {
-            MExpression copy = MExpression
-                .opDiv((MExpression)o1,(MExpression)o2);
-            if (copy != null)
-            {
-                stack.remove(top - 1);
-                stack.set(top - 2, copy);
-                return true;
-            }
-        }
-        return false;     
-    }
-
-    @SuppressWarnings("unchecked")
-    private static boolean doMod(Stack stack)
-    {
-        int top = stack.size();
-        
-        Object o1, o2;
-        o1 = stack.get(top - 2);
-        o2 = stack.get(top - 1);
-    
-        if (o1 instanceof MExpression && o2 instanceof MExpression)
-        {
-            MExpression copy = MExpression
-                .opMod((MExpression)o1,(MExpression)o2);
-            if (copy != null)
-            {
-                stack.remove(top - 1);
-                stack.set(top - 2, copy);
-                return true;
-            }
-        }
-        return false;     
-    }
-
-    @SuppressWarnings("unchecked")
-    private static boolean doShift(Stack stack)
-    {
-        int top = stack.size();
-        
-        Object o1, o2;
-        o1 = stack.get(top - 2);
-        o2 = stack.get(top - 1);
-    
-        if (o1 instanceof MExpression && o2 instanceof MExpression)
-        {
-            MExpression copy = MExpression
-                .opShift((MExpression)o1,(MExpression)o2);
-            if (copy != null)
-            {
-                stack.remove(top - 1);
-                stack.set(top - 2, copy);
-                return true;
-            }
-        }
-        return false;     
-    }   
-
-    
-    @SuppressWarnings("unchecked")
-    private static boolean doLAnd(Stack stack)
-    {
-        int top = stack.size();
-        
-        Object o1, o2;
-        o1 = stack.get(top - 2);
-        o2 = stack.get(top - 1);
-    
-        if (o1 instanceof MExpression && o2 instanceof MExpression)
-        {
-            MExpression copy = MExpression
-                .opLAnd((MExpression)o1,(MExpression)o2);
-            if (copy != null)
-            {
-                stack.remove(top - 1);
-                stack.set(top - 2, copy);
-                return true;
-            }
-        }
-        return false;     
-    }    
-    @SuppressWarnings("unchecked")
-    private static boolean doLOr(Stack stack)
-    {
-        int top = stack.size();
-        
-        Object o1, o2;
-        o1 = stack.get(top - 2);
-        o2 = stack.get(top - 1);
-    
-        if (o1 instanceof MExpression && o2 instanceof MExpression)
-        {
-            MExpression copy = MExpression
-                .opLOr((MExpression)o1,(MExpression)o2);
-            if (copy != null)
-            {
-                stack.remove(top - 1);
-                stack.set(top - 2, copy);
-                return true;
-            }
-        }
-        return false;     
-    }    
-
-    @SuppressWarnings("unchecked")
-    private static boolean doLEor(Stack stack)
-    {
-        int top = stack.size();
-        
-        Object o1, o2;
-        o1 = stack.get(top - 2);
-        o2 = stack.get(top - 1);
-    
-        if (o1 instanceof MExpression && o2 instanceof MExpression)
-        {
-            MExpression copy = MExpression
-                .opLEor((MExpression)o1,(MExpression)o2);
-            if (copy != null)
-            {
-                stack.remove(top - 1);
-                stack.set(top - 2, copy);
-                return true;
-            }
-        }
-        return false;     
     }
     
     public Integer Value()
@@ -485,15 +301,15 @@ public class ComplexExpression implements __Expression
         "* ",
         "/ ",
         "% ",
-        "-- ", //unary minus
+        "(-) ", //unary minus
         "<< ", // shift
-        "&& ",
-        "|| ",
-        "^^ ", //logical eor
-        "! ",
+        "and ",
+        "or ",
+        "eor ", //logical eor
+        "not ",
         "<= ",
         ">= ",
-        "!= ",
+        "<> ",
         "< ",
         "> ",
         "== ",

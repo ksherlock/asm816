@@ -54,7 +54,7 @@ public class AsmException extends Exception
     {
         StringBuffer s = new StringBuffer();
         
-        if (fLine != 0) s.append(" Line " + fLine + " ");
+        if (fLine != 0) s.append(" Line " + fLine + ": ");
         
         switch (fError)
         {
@@ -63,6 +63,8 @@ public class AsmException extends Exception
             break;
         case E_LABEL_REQUIRED:
             s.append("Label is required"); 
+            if (fString != null)
+                s.append(" for " + fString);
             // todo -- need to mention which directive.
             break;
         case E_ALIGN:
@@ -76,34 +78,39 @@ public class AsmException extends Exception
             break;
         case E_UNEXPECTED:
             s.append("Unexpected ");
-            switch (fToken.Type())
+            if (fToken != null)
             {
-            case Token.EOF:
-                s.append("end of file");
+                switch (fToken.Type())
+                {
+                case Token.EOF:
+                    s.append("end of file");
+                    break;
+                case Token.EOL:
+                    s.append("end of line");
+                    break;
+                case Token.NUMBER:
+                    s.append("number");
+                    s.append(" -- " + fToken.Value());
+                    break;
+                case Token.SPACE:
+                    s.append("space");
+                    break;
+                case Token.STRING:
+                    s.append("string");
+                    s.append(" -- " + fToken.toString());
+                    break;
+                case Token.SYMBOL:
+                    s.append("symbol");
+                    s.append(" -- " + fToken.toString());
+                    break;
+                default:
+                    s.append("'" + (char)fToken.Value() + "'");
+                
+                }
                 break;
-            case Token.EOL:
-                s.append("end of line");
-                break;
-            case Token.NUMBER:
-                s.append("number");
-                s.append(" -- " + fToken.Value());
-                break;
-            case Token.SPACE:
-                s.append("space");
-                break;
-            case Token.STRING:
-                s.append("string");
-                s.append(" -- " + fToken.toString());
-                break;
-            case Token.SYMBOL:
-                s.append("symbol");
-                s.append(" -- " + fToken.toString());
-                break;
-            default:
-                s.append((char)fToken.Value());
-            
             }
-            break;
+            else if (fString != null)
+                s.append(" " + fString);
         }
         return s.toString();
     }
