@@ -48,7 +48,7 @@ public class Expression implements __Expression
             
         case OMF.OMF_RELEXPR:
             // TODO -- need to verify relexpressions
-            return new OMF_RelExpr(fSize, 1, expr);
+            return new OMF_RelExpr(fSize, fSize, expr);
         case OMF.OMF_EXPR:
         case OMF.OMF_LEXPR:
         case OMF.OMF_BKEXPR:
