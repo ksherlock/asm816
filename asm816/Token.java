@@ -25,7 +25,7 @@ public final class Token
         fType = type;
         fValue = 0;
         fString = null;
-        fLine = lex.Line();
+        fLine = lex == null ? 0 : lex.Line();
     }
     public Token(int type, String string, Lexer lex)
     {

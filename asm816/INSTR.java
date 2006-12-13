@@ -656,7 +656,7 @@ public enum INSTR
 
         1 | m6502,                  // 60 rts
         2 | m6502,                  // 61 adc (dp,x)
-        3 | m65816,                 // 62 per |abs
+        3 | m65816 | mBranch,       // 62 per |abs
         2 | m65816,                 // 63 adc ,s
         2 | m65c02,                 // 64 stz <dp
         2 | m6502,                  // 65 adc <dp

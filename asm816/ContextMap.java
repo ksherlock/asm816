@@ -86,6 +86,14 @@ public class ContextMap<K,V>
         return out;
     }
     
+    public void Clear()
+    {
+        fMap.clear();
+        fBackbone = null;
+    }
+    
+    
+    
     private ContextMap<K,V> fBackbone;
     private HashMap<K,V> fMap;
 }

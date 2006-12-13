@@ -64,6 +64,8 @@ public class MPW_Parser extends Parser
     private HashMap<String, ArrayList<String>> fDataSegs;
     private HashMap<String, Macro> fMacros;
     
+    private SymbolTable fMacroVars;
+    
     private String fOpcode;
     private int fLine;
     
@@ -95,6 +97,8 @@ public class MPW_Parser extends Parser
         
         fExports = new ContextMap<String, Boolean>();
         fMacros = new HashMap<String, Macro>();
+        fMacroVars = new SymbolTable();
+        
         
         fData = null;
         fSegment = null;
@@ -365,9 +369,9 @@ public class MPW_Parser extends Parser
     }
 
     
-    private Line GetLine(Lexer lex, Line l) throws AsmException
+    private Line GetLine(Lexer lex) throws AsmException
     {
-        if (l == null) l = new Line();
+       Line l = new Line();
         
         Token t;
         String s;
@@ -403,6 +407,46 @@ public class MPW_Parser extends Parser
         return l;
     }
     
+    private MacroLine GetMacroLine(Lexer lex) throws AsmException
+    {
+        MacroLine l = new MacroLine();
+     
+        Token t;
+        String s;
+        int type;
+        
+        
+        t = lex.Expect(Token.EOF, Token.EOL, 
+                Token.SPACE, Token.SYMBOL, Token.MACRO_PARM);
+        
+        type = t.Type();
+        
+        if (type == Token.EOL)
+            return null;
+        if (type == Token.EOF)
+        {
+            fEndFile = true;
+            return null;
+        }
+        // TODO -- only @labels should be allowed.
+        if (type == Token.SYMBOL || type == Token.MACRO_PARM)
+        {
+            l.lab = t.toString();
+            t = lex.Expect(Token.SPACE, Token.EOL);
+            
+            if (t.Type() == Token.EOL)
+                return l;
+        }
+        t = lex.Expect(Token.SYMBOL);
+        
+        l.opcode = t.toString().toUpperCase();
+        
+        l.operand = lex.Arguments(true);
+
+        return l;
+    }
+    
+    
     protected void ParseLine(Lexer lex)
     {
         
@@ -411,7 +455,7 @@ public class MPW_Parser extends Parser
         try
         {         
 
-            Line l = GetLine(lex, null);
+            Line l = GetLine(lex);
             
             if (l == null) return;
             DoLine(l.lab, l.opcode, l.operand);
@@ -475,10 +519,53 @@ public class MPW_Parser extends Parser
     {
         MacroLine ml;
         
+        HashMap<String, Object> map = new HashMap<String, Object>();
+        
         // TODO -- prevent infinite loops.
         
-        //TODO -- if lab != null && macro doesn't have a 
-        // lab parm, do the label before the macro.
+       
+        
+        if (ti != null)
+        {
+            ArrayList<Token> tmp;
+            tmp = new ArrayList<Token>();
+            int index = 0;
+
+            // TODO -- check if index out of bounds, etc.
+            while (!ti.EndOfLine())
+            {
+                Token t = ti.Next();
+                if (t.Type() == ',')
+                {
+                    map.put(m.args[index++], tmp.toArray());
+                    tmp.clear();
+                }
+                else tmp.add(t);
+            }
+            map.put(m.args[index++], tmp.toArray());   
+        }
+        
+               
+        fMacroVars.Push();
+
+        /*
+         * if no macro label, do label here.
+         * 
+         */
+        
+        if (m.lab == null)
+        {
+            if (lab != null)
+                DoLine(lab, null, null);
+        }
+        else
+        {
+            fMacroVars.Put(m.lab, new SymbolExpression(lab));
+            map.put(m.lab, new Token(Token.SYMBOL, lab, null));
+        }
+        
+        // map arguments to macro arguments.
+        
         
         // TODO -- setup local variables and substitute
         ml = m.line;
@@ -488,11 +575,21 @@ public class MPW_Parser extends Parser
             // TODO -- check if opcode is macro command
             // TODO -- label replacement for @/&
             // TODO -- variable replacement in strings.
-            ml.operand.Reset();
-            DoLine(ml.lab, ml.opcode, ml.operand);
+            //ml.operand.Reset();
+            
+            ti = ml.operand;
+            if (ti != null)
+            {
+                if (ti.Contains(Token.MACRO_PARM))
+                    ti = new MacroIterator(ti, map);
+            }
+            
+            DoLine(ml.lab, ml.opcode, ti);
             
             ml = ml.next;
         }   
+        
+        fMacroVars.Pop();
     }
     
     
@@ -1306,8 +1403,8 @@ public class MPW_Parser extends Parser
         boolean done = false;
         for(int i = 0;!done;)
         {
-            ml = new MacroLine();
-            if (GetLine(fLexer, ml) == null)
+            ml = GetMacroLine(fLexer);
+            if (ml == null)
             {
                 // error
                 if (fEnd) return;
@@ -1347,6 +1444,18 @@ public class MPW_Parser extends Parser
                 // todo -- qualifier/arguments
                 m.lab = ml.lab;
                 name = s;
+                
+                if (ml.operand != null)
+                {
+                    // TODO -- should be MACRO_PARM, not symbol...
+                    __TokenIterator ai = ml.operand;
+                    ArrayList<Token> list = ai.toList(Token.SYMBOL);
+                    
+                    int size = list.size();
+                    m.args = new String[size];
+                    for (int j = 0; j < size; j++)
+                        m.args[j] = list.get(j).toString();                    
+                }
                 
                 continue;
             }
@@ -1737,7 +1846,7 @@ public class MPW_Parser extends Parser
         
         String lab;
         String qualifier;
-        ArrayList<String> args;
+        String[] args;
         MacroLine line;
     }
 }

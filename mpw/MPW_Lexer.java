@@ -283,7 +283,16 @@ public class MPW_Lexer extends Lexer
         case 0x2265: // ? &ge;
             return new Token(Token.GE);
         
-
+        case '&':
+            
+            if (ctype.isalpha(next) || next == '_')
+            {
+                String s = ParseSymbol(c);
+                return new Token(Token.MACRO_PARM, s, this);
+            }
+            return new Token('&');
+            
+            
             /*
              * a symbol or something else to process later.
              */

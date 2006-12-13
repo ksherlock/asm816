@@ -47,6 +47,37 @@ public class TokenIterator extends __TokenIterator
         return fList.get(fIndex++);        
     }
     
+    public boolean Contains(int type)
+    {
+        int size = fList.size();
+        
+        for (int i = 0; i < size; i++)
+        {
+            Token t = fList.get(i);
+            if (t.Type() == type) return true;
+        }
+        return false;
+    }
+
+    public boolean Contains(int... types)
+    {
+        int size = fList.size();
+        int length = types.length;
+        
+        for (int i = 0; i < size; i++)
+        {
+            Token t = fList.get(i);
+            int type = t.Type();
+            for (int j = 0; j < length; j++)
+            {
+                if (types[j] == type) return true;
+            }
+        }
+        return false;
+    }    
+    
     int fIndex;
     private ArrayList<Token> fList;
+
+
 }
