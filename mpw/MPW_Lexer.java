@@ -167,6 +167,10 @@ public class MPW_Lexer extends Lexer
                 if (ctype.isalpha(next) || next == '_')
                 {
                     String s = ParseSymbol('@');
+                    if (fLocalLabel.length() == 0)
+                        return new Token(Token.MACRO_LAB,
+                                s, this);
+                    
                     return new Token(Token.SYMBOL, 
                             fLocalLabel + s , this);
                 }

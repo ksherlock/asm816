@@ -72,6 +72,7 @@ public class MPW_Parser extends Parser
     private MPW_Lexer fLexer;
     private int fSegCounter;
     private String fSegname;
+    private int fMacnum;
    
     private static final int STRING_PASCAL = 0;
     private static final int STRING_ASIS = 1;
@@ -114,6 +115,8 @@ public class MPW_Parser extends Parser
         fSegCounter = 0;
         fSegname = "";
         fLine = 0;
+        
+        fMacnum = 0;
         
         fWith = null;
         
@@ -523,7 +526,8 @@ public class MPW_Parser extends Parser
         
         // TODO -- prevent infinite loops.
         
-       
+       fMacnum++;
+       String labname = m.name + "@" + fMacnum;
         
         if (ti != null)
         {
@@ -580,8 +584,8 @@ public class MPW_Parser extends Parser
             ti = ml.operand;
             if (ti != null)
             {
-                if (ti.Contains(Token.MACRO_PARM))
-                    ti = new MacroIterator(ti, map);
+                if (ti.Contains(Token.MACRO_PARM, Token.MACRO_LAB))
+                    ti = new MacroIterator(ti, map, labname);
             }
             
             DoLine(ml.lab, ml.opcode, ti);
@@ -1014,6 +1018,10 @@ public class MPW_Parser extends Parser
                 //TODO -- set type.
                 if (INSTR.isBranch(opcode))
                     ex.SetType(OMF.OMF_RELEXPR);
+                
+                if (opcode == 0x22)
+                    ex.SetType(OMF.OMF_LEXPR);
+                
                 
                 fData.add(ex);
             }
@@ -1476,6 +1484,7 @@ public class MPW_Parser extends Parser
             
         }
         m.line = first;
+        m.name = name;
         fMacros.put(name, m);
     }
     
@@ -1842,8 +1851,9 @@ public class MPW_Parser extends Parser
             qualifier = null;
             args = null;
             line = null;
+            name = null;
         }
-        
+        String name;
         String lab;
         String qualifier;
         String[] args;

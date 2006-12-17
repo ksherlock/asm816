@@ -13,11 +13,12 @@ public class MacroIterator extends __TokenIterator
 {
     private int STATE_UNKNOWN = -1;  
     
-    public MacroIterator(__TokenIterator base, HashMap<String, Object> parms)
+    public MacroIterator(__TokenIterator base, HashMap<String, Object> parms, String labname)
     {
         fBase = base;
         fParms = parms;
         fReplace = null;
+        fLabname = labname;
         fState = STATE_UNKNOWN;
     }
     
@@ -66,30 +67,45 @@ public class MacroIterator extends __TokenIterator
                 fState = STATE_UNKNOWN;
         }
         
+
         if (fState == STATE_UNKNOWN)
         {
-            fReplace = null;
-            Token t = fBase.Next();
-            if (t.Type() == Token.MACRO_PARM)
+            for (;;)
             {
-                String s = t.toString();
-                Object o = fParms.get(s);
-                // TODO -- if o == null?
-                if (o instanceof Token)
+                fReplace = null;
+                Token t = fBase.Next();
+                int type = t.Type();
+                if (type == Token.MACRO_PARM)
                 {
-                    fT = (Token)o;
+                    String s = t.toString();
+                    Object o = fParms.get(s);
+                    // TODO -- if o == null.. should get loop & retry.
+                    if (o == null) continue;
+                    
+                    if (o instanceof Token)
+                    {
+                        fT = (Token)o;
+                        return;
+                    }
+                    else
+                    {
+                        fState = 0;
+                        fReplace = (Object[])o;
+                        break;
+                    }
+                }
+                else if (type == Token.MACRO_LAB)
+                {
+                    String s = t.toString();
+                    s = fLabname + s;
+                    fT = new Token(Token.SYMBOL, s, null);
                     return;
                 }
                 else
                 {
-                    fState = 0;
-                    fReplace = (Object[])o;
+                    fT = t;
+                    return;
                 }
-            }
-            else
-            {
-                fT = t;
-                return;
             }
         }
         
@@ -106,6 +122,7 @@ public class MacroIterator extends __TokenIterator
     private Token fT;
     private Object[] fReplace;
     private int fState;
+    private String fLabname;
 
     @Override
     public boolean Contains(int type)

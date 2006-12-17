@@ -1,5 +1,6 @@
 package asm816;
 import omf.*;
+import omf.io.__OMF_Writer;
 
 /*
  * Created on Feb 16, 2006
