@@ -420,7 +420,7 @@ public class MPW_Parser extends Parser
         
         
         t = lex.Expect(Token.EOF, Token.EOL, 
-                Token.SPACE, Token.SYMBOL, Token.MACRO_PARM);
+                Token.SPACE, Token.MACRO_LAB, Token.MACRO_PARM);
         
         type = t.Type();
         
@@ -432,7 +432,7 @@ public class MPW_Parser extends Parser
             return null;
         }
         // TODO -- only @labels should be allowed.
-        if (type == Token.SYMBOL || type == Token.MACRO_PARM)
+        if (type == Token.MACRO_LAB || type == Token.MACRO_PARM)
         {
             l.lab = t.toString();
             t = lex.Expect(Token.SPACE, Token.EOL);
@@ -587,8 +587,17 @@ public class MPW_Parser extends Parser
                 if (ti.Contains(Token.MACRO_PARM, Token.MACRO_LAB))
                     ti = new MacroIterator(ti, map, labname);
             }
+            // TODO -- this is wrong... could be any parameter.
+            String l = ml.lab;
+            if (l != null)
+            {
+                int c = l.charAt(0);
+                if (c == '@') l = labname + l;
+                else if (c == '&' && l.compareTo(m.lab) == 0) l = lab;
+            }
             
-            DoLine(ml.lab, ml.opcode, ti);
+            
+            DoLine(l, ml.opcode, ti);
             
             ml = ml.next;
         }   
@@ -1457,7 +1466,7 @@ public class MPW_Parser extends Parser
                 {
                     // TODO -- should be MACRO_PARM, not symbol...
                     __TokenIterator ai = ml.operand;
-                    ArrayList<Token> list = ai.toList(Token.SYMBOL);
+                    ArrayList<Token> list = ai.toList(Token.MACRO_PARM);
                     
                     int size = list.size();
                     m.args = new String[size];
